@@ -7,7 +7,15 @@ local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+
+-- FIX [10]: usa gethui() em executor, fallback CoreGui, fallback PlayerGui
+local function getContainer()
+    if gethui then return gethui() end
+    local ok, cg = pcall(game.GetService, game, "CoreGui")
+    if ok and cg then return cg end
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+local GuiParent = getContainer()
 
 -- ════════════════════════════════════════════════
 --  PALETA
@@ -83,7 +91,7 @@ local Config = {
     SliderKnobS   = 16,
 
     NotifyW       = 300,
-    NotifyH       = 72,   -- FIX [4]: altura fixa, sem AutomaticSize conflitante
+    NotifyH       = 72,
     NotifyPadR    = 16,
     NotifyPadB    = 16,
     NotifyGap     = 8,
@@ -124,7 +132,6 @@ local function clamp(v, lo, hi)
     return math.max(lo, math.min(hi, v))
 end
 
--- Botão circular do header (fechar / minimizar)
 function Util.HeaderButton(parent, pos, colNorm, colHover, sym)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0,14,0,14); btn.Position = pos
@@ -160,7 +167,6 @@ local Widgets = {}
 --  BUTTON
 -- ────────────────────────────────────────────────
 function Widgets.Button(scroll, text, order, cb)
-    -- Wrapper: ancora o espaço no layout sem ser afetado pelo UIScale
     local wrap = Instance.new("Frame")
     wrap.Size = UDim2.new(1,0,0,Config.WidgetH)
     wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
@@ -173,7 +179,6 @@ function Widgets.Button(scroll, text, order, cb)
     Util.Corner(f, Config.WidgetCorner)
     local stroke = Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
 
-    -- UIScale aplicado ao frame visual, não ao wrapper
     local scale = Instance.new("UIScale"); scale.Scale = 1; scale.Parent = f
 
     local ico = Instance.new("TextLabel")
@@ -265,7 +270,6 @@ function Widgets.Toggle(scroll, text, default, order, cb)
     Util.Corner(f, Config.WidgetCorner)
     Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
 
-    -- Ícone de estado à esquerda
     local sico = Instance.new("TextLabel")
     sico.Size = UDim2.new(0,16,1,0); sico.Position = UDim2.new(0,10,0,0)
     sico.BackgroundTransparency = 1
@@ -283,7 +287,6 @@ function Widgets.Toggle(scroll, text, default, order, cb)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.ZIndex = 2; lbl.Parent = f
 
-    -- Track do switch
     local tw, th = Config.ToggleW, Config.ToggleH
     local track = Instance.new("Frame")
     track.Size = UDim2.new(0,tw,0,th)
@@ -291,11 +294,9 @@ function Widgets.Toggle(scroll, text, default, order, cb)
     track.BackgroundColor3 = state and Theme.Accent or Theme.ToggleOffTrack
     track.BorderSizePixel = 0; track.ZIndex = 3; track.Parent = f
     Util.Corner(track, UDim.new(1,0))
-    -- FIX: UIStroke criado uma vez e referenciado
     local trackStroke = Util.Stroke(track, Theme.Accent, Config.WidgetBorderW)
     trackStroke.Transparency = state and 0 or 1
 
-    -- Knob
     local ks = Config.KnobSize; local kp = Config.KnobPad
     local kOffX = kp
     local kOnX  = tw - ks - kp
@@ -362,9 +363,6 @@ end
 
 -- ────────────────────────────────────────────────
 --  SLIDER
---  FIX [2]: knobStroke criado uma vez, tweenado
---  FIX [3]: InputEnded guardado e desconectado
---  FIX [5]: um único hitbox que cobre trilha+knob
 -- ────────────────────────────────────────────────
 function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     minV    = minV or 0
@@ -384,13 +382,11 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     Util.Corner(f, Config.WidgetCorner)
     Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
 
-    -- Padding interno do frame
     local pad = Instance.new("UIPadding")
     pad.PaddingLeft   = UDim.new(0,10); pad.PaddingRight  = UDim.new(0,10)
     pad.PaddingTop    = UDim.new(0,7);  pad.PaddingBottom = UDim.new(0,7)
     pad.Parent = f
 
-    -- Linha do título
     local topRow = Instance.new("Frame")
     topRow.Size = UDim2.new(1,0,0,16)
     topRow.BackgroundTransparency = 1; topRow.BorderSizePixel = 0
@@ -404,7 +400,6 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     nameLbl.TextXAlignment = Enum.TextXAlignment.Left
     nameLbl.ZIndex = 2; nameLbl.Parent = topRow
 
-    -- Badge numérico
     local badge = Instance.new("Frame")
     badge.Size = UDim2.new(0,44,1,0); badge.Position = UDim2.new(1,-44,0,0)
     badge.BackgroundColor3 = Theme.Surface; badge.BorderSizePixel = 0
@@ -420,7 +415,6 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     valLbl.TextXAlignment = Enum.TextXAlignment.Center
     valLbl.ZIndex = 3; valLbl.Parent = badge
 
-    -- Trilha — posição relativa ao padding do frame pai (top=7 + topRow=16 + gap=4 = Y:20)
     local trackH = Config.SliderTrackH
     local track = Instance.new("Frame")
     track.Size = UDim2.new(1,0,0,trackH)
@@ -435,7 +429,6 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     fill.BorderSizePixel = 0; fill.ZIndex = 3; fill.Parent = track
     Util.Corner(fill, UDim.new(1,0))
 
-    -- Knob
     local ks = Config.SliderKnobS
     local knob = Instance.new("Frame")
     knob.Size = UDim2.new(0,ks,0,ks)
@@ -444,10 +437,8 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     knob.BackgroundColor3 = Theme.SliderKnob
     knob.BorderSizePixel = 0; knob.ZIndex = 5; knob.Parent = track
     Util.Corner(knob, UDim.new(1,0))
-    -- FIX [2]: referência única do stroke do knob
     local knobStroke = Util.Stroke(knob, Theme.Accent, 1.5)
 
-    -- Labels min/max — posição relativa ao padding (Y:20 da trilha + trackH + 4)
     local minLbl = Instance.new("TextLabel")
     minLbl.Size = UDim2.new(0,30,0,10)
     minLbl.Position = UDim2.new(0,0,0,26)
@@ -466,7 +457,6 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     maxLbl.TextXAlignment = Enum.TextXAlignment.Right
     maxLbl.ZIndex = 2; maxLbl.Parent = f
 
-    -- Aplica valor ao visual
     local function applyValue(v)
         value = clamp(v, minV, maxV)
         local r = (value - minV) / (maxV - minV)
@@ -474,27 +464,23 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
         knob.Position = UDim2.new(r, 0, 0.5, 0)
         valLbl.Text   = tostring(math.round(value))
     end
-    applyValue(value) -- estado inicial sem callback
+    applyValue(value)
 
-    -- FIX [5]: hitbox único cobre trilha + área do knob
-    -- Posicionado no frame f, sobre a trilha (Y=20, height=trackH+20 para pegar knob)
     local hitbox = Instance.new("TextButton")
     hitbox.Size = UDim2.new(1,0,0,trackH + 20)
     hitbox.Position = UDim2.new(0,0,0,10)
     hitbox.BackgroundTransparency = 1; hitbox.Text = ""
     hitbox.ZIndex = 7; hitbox.AutoButtonColor = false; hitbox.Parent = f
 
-    -- FIX [3]: conexão do InputEnded guardada por slider
     local dragging   = false
     local moveConn   = nil
-    local endedConn  = nil -- FIX [3]
+    local endedConn  = nil
 
-    -- Se min e max são ambos inteiros, arredonda; caso contrário mantém 2 casas decimais
     local isInt = (math.floor(minV) == minV) and (math.floor(maxV) == maxV)
 
     local function applyFromX(absX)
         local tw2  = track.AbsoluteSize.X
-        if tw2 == 0 then return end  -- guard: evita divisão por zero antes do layout
+        if tw2 == 0 then return end
         local relX = clamp(absX - track.AbsolutePosition.X, 0, tw2)
         local v = minV + (relX / tw2) * (maxV - minV)
         v = isInt and math.round(v) or (math.floor(v * 100 + 0.5) / 100)
@@ -516,7 +502,6 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
 
     hitbox.MouseButton1Down:Connect(function()
         dragging = true
-        -- FIX [2]: tweena o stroke já existente, não cria um novo
         Util.Tween(knob,       Config.TweenFast, {BackgroundColor3 = Theme.AccentGlow})
         Util.Tween(knobStroke, Config.TweenFast, {Color = Theme.AccentGlow, Thickness = 2})
         applyFromX(UserInputService:GetMouseLocation().X)
@@ -527,13 +512,11 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
             end
         end)
 
-        -- FIX [3]: guarda a conexão do InputEnded para desconectar depois
         endedConn = UserInputService.InputEnded:Connect(function(inp)
             if inp.UserInputType == Enum.UserInputType.MouseButton1 then
                 dragging = false
                 if moveConn  then moveConn:Disconnect();  moveConn  = nil end
                 if endedConn then endedConn:Disconnect(); endedConn = nil end
-                -- Restaura visual do knob
                 Util.Tween(knob,       Config.TweenFast, {BackgroundColor3 = Theme.SliderKnob})
                 Util.Tween(knobStroke, Config.TweenFast, {Color = Theme.Accent, Thickness = 1.5})
                 Util.Tween(f,          Config.TweenFast, {BackgroundColor3 = Theme.WidgetBg})
@@ -553,8 +536,6 @@ end
 
 -- ════════════════════════════════════════════════
 --  NOTIFICAÇÕES
---  FIX [4]: layout fixo, sep/bar com posição
---           absoluta dentro de frame de altura fixa
 -- ════════════════════════════════════════════════
 local _notifyGui   = nil
 local _notifyStack = {}
@@ -564,13 +545,13 @@ local function getNotifyGui()
     local ng = Instance.new("ScreenGui")
     ng.Name = "ModernNoir_Notify"; ng.ResetOnSpawn = false
     ng.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    ng.DisplayOrder = 200; ng.IgnoreGuiInset = true
-    ng.Parent = PlayerGui
+    ng.DisplayOrder = 200
+    ng.IgnoreGuiInset = false  -- FIX [11]
+    ng.Parent = GuiParent      -- FIX [10]
     _notifyGui = ng
     return ng
 end
 
--- Recalcula posições Y de todos os cards ativos
 local function reshuffleNotify()
     local vp   = workspace.CurrentCamera.ViewportSize
     local cumY = Config.NotifyPadB
@@ -594,11 +575,10 @@ local function createNotify(title, body, duration)
     local ng   = getNotifyGui()
     local vp   = workspace.CurrentCamera.ViewportSize
     local w    = Config.NotifyW
-    local h    = Config.NotifyH  -- FIX [4]: altura fixa
+    local h    = Config.NotifyH
     local padR = Config.NotifyPadR
     local padB = Config.NotifyPadB
 
-    -- Card começa fora da tela à direita
     local card = Instance.new("Frame")
     card.Name            = "NotifyCard"
     card.Size            = UDim2.new(0, w, 0, h)
@@ -607,25 +587,22 @@ local function createNotify(title, body, duration)
     card.BorderSizePixel = 0
     card.ClipsDescendants= true
     card.ZIndex          = 10
-    card.Parent          = ng   -- ng vem de getNotifyGui()
+    card.Parent          = ng
     Util.Corner(card, UDim.new(0,8))
     Util.Stroke(card, Theme.Border, 1)
 
-    -- Faixa dourada esquerda
     local accentBar = Instance.new("Frame")
     accentBar.Size = UDim2.new(0,3,1,0)
     accentBar.BackgroundColor3 = Theme.Accent; accentBar.BorderSizePixel = 0
     accentBar.ZIndex = 11; accentBar.Parent = card
     Util.Corner(accentBar, UDim.new(0,2))
 
-    -- Ícone
     local ico = Instance.new("TextLabel")
     ico.Size = UDim2.new(0,18,0,18); ico.Position = UDim2.new(0,12,0,10)
     ico.BackgroundTransparency = 1; ico.Text = "◈"
     ico.Font = Enum.Font.GothamBold; ico.TextSize = 13
     ico.TextColor3 = Theme.Accent; ico.ZIndex = 12; ico.Parent = card
 
-    -- Título
     local titLbl = Instance.new("TextLabel")
     titLbl.Size = UDim2.new(1,-38,0,18); titLbl.Position = UDim2.new(0,34,0,10)
     titLbl.BackgroundTransparency = 1; titLbl.Text = title or "Notificação"
@@ -635,7 +612,6 @@ local function createNotify(title, body, duration)
     titLbl.TextTruncate = Enum.TextTruncate.AtEnd
     titLbl.ZIndex = 12; titLbl.Parent = card
 
-    -- Corpo — altura fixa para caber no card (h - topo(10+18) - barra(3) - gap = ~41)
     local bodyLbl = Instance.new("TextLabel")
     bodyLbl.Size = UDim2.new(1,-20,0,26); bodyLbl.Position = UDim2.new(0,12,0,32)
     bodyLbl.BackgroundTransparency = 1; bodyLbl.Text = body or ""
@@ -645,10 +621,9 @@ local function createNotify(title, body, duration)
     bodyLbl.TextWrapped = true; bodyLbl.TextTruncate = Enum.TextTruncate.AtEnd
     bodyLbl.ZIndex = 12; bodyLbl.Parent = card
 
-    -- FIX [4]: barra de progresso com posição absoluta (sem Scale Y)
     local barBg = Instance.new("Frame")
     barBg.Size = UDim2.new(1,0,0,Config.NotifyBarH)
-    barBg.Position = UDim2.new(0,0,0,h - Config.NotifyBarH)  -- fundo do card
+    barBg.Position = UDim2.new(0,0,0,h - Config.NotifyBarH)
     barBg.BackgroundColor3 = Theme.NotifyBarBg; barBg.BorderSizePixel = 0
     barBg.ZIndex = 11; barBg.Parent = card
 
@@ -657,7 +632,6 @@ local function createNotify(title, body, duration)
     barFill.BackgroundColor3 = Theme.Accent; barFill.BorderSizePixel = 0
     barFill.ZIndex = 12; barFill.Parent = barBg
 
-    -- Botão ×
     local closeX = Instance.new("TextButton")
     closeX.Size = UDim2.new(0,16,0,16); closeX.Position = UDim2.new(1,-20,0,7)
     closeX.BackgroundTransparency = 1; closeX.Text = "×"
@@ -670,11 +644,9 @@ local function createNotify(title, body, duration)
         Util.Tween(closeX, Config.TweenFast, {TextColor3 = Theme.TextDisabled})
     end)
 
-    -- Registra na stack
     local entry = {card = card}
     table.insert(_notifyStack, entry)
 
-    -- Anima entrada (próximo frame para AbsoluteSize estar disponível)
     task.defer(function()
         reshuffleNotify()
         local slideInfo = TweenInfo.new(Config.NotifySlideT, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
@@ -683,7 +655,6 @@ local function createNotify(title, body, duration)
         })
     end)
 
-    -- Barra decrescente
     local dur = duration or Config.NotifyDur
     local barInfo = TweenInfo.new(dur, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
     task.delay(Config.NotifySlideT * 0.6, function()
@@ -692,7 +663,6 @@ local function createNotify(title, body, duration)
         end
     end)
 
-    -- Dismiss
     local gone = false
     local function dismiss()
         if gone then return end; gone = true
@@ -757,7 +727,7 @@ end
 --  LIBRARY
 -- ════════════════════════════════════════════════
 local ModernNoir = {}
-ModernNoir._Version = "4.2.0"
+ModernNoir._Version = "4.3.0"
 ModernNoir._Windows = {}
 
 function ModernNoir:Notify(title, text, duration)
@@ -769,15 +739,30 @@ function ModernNoir.CreateWindow(title)
     local sg = Instance.new("ScreenGui")
     sg.Name = "ModernNoir_"..(title or "Window")
     sg.ResetOnSpawn = false; sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    sg.DisplayOrder = 100; sg.IgnoreGuiInset = true; sg.Parent = PlayerGui
+    sg.DisplayOrder = 100
+    sg.IgnoreGuiInset = false  -- FIX [11]: false com gethui
+    sg.Parent = GuiParent      -- FIX [10]: GuiParent em vez de PlayerGui
 
     local mf = Instance.new("Frame")
     mf.Name = "MainFrame"
     mf.Size = UDim2.new(0, Config.WindowWidth, 0, Config.WindowHeight)
-    mf.Position = UDim2.new(0.5,-Config.WindowWidth/2, 0.5,-Config.WindowHeight/2)
+    -- FIX [12]: AnchorPoint + Position centrado, independente de resolução
+    mf.AnchorPoint = Vector2.new(0.5, 0.5)
+    mf.Position    = UDim2.new(0.5, 0, 0.5, 0)
     mf.BackgroundColor3 = Theme.Background; mf.BorderSizePixel = 0
     mf.ClipsDescendants = true; mf.Parent = sg
     Util.Corner(mf); Util.Stroke(mf, Theme.Border, Config.BorderW)
+
+    -- FIX [13]: UIScale responsivo ao viewport
+    local uiScale = Instance.new("UIScale")
+    uiScale.Parent = mf
+
+    local function updateScale()
+        local vp = workspace.CurrentCamera.ViewportSize
+        uiScale.Scale = math.min(vp.X / Config.WindowWidth, vp.Y / Config.WindowHeight, 1)
+    end
+    updateScale()
+    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
 
     -- Sombra
     local sh = Instance.new("ImageLabel")
@@ -820,15 +805,18 @@ function ModernNoir.CreateWindow(title)
     local minimizeBtn = Util.HeaderButton(hdr, UDim2.new(1,-38,0.5,0), Theme.Accent,        Theme.AccentGlow,    "−")
 
     -- ── Drag suave ───────────────────────────────────────────
+    -- FIX [14]: drag corrigido para AnchorPoint 0.5,0.5
     local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
-    local targetPos = mf.Position
+    local targetPos = mf.Position  -- UDim2.new(0.5, 0, 0.5, 0)
 
     local function updateDrag(inp)
         local d  = inp.Position - dragStart
         local vp = workspace.CurrentCamera.ViewportSize
-        targetPos = UDim2.new(0,
-            clamp(startPos.X.Offset + d.X, 0, vp.X - Config.WindowWidth), 0,
-            clamp(startPos.Y.Offset + d.Y, 0, vp.Y - Config.WindowHeight))
+        local hw = (Config.WindowWidth  * uiScale.Scale) / 2
+        local hh = (Config.WindowHeight * uiScale.Scale) / 2
+        local newX = clamp(startPos.X.Offset + d.X, hw - vp.X/2,        vp.X/2 - hw)
+        local newY = clamp(startPos.Y.Offset + d.Y, hh - vp.Y/2,        vp.Y/2 - hh)
+        targetPos = UDim2.new(0.5, newX, 0.5, newY)
     end
 
     hdr.InputBegan:Connect(function(i)
@@ -854,8 +842,8 @@ function ModernNoir.CreateWindow(title)
     local renderConn = RunService.RenderStepped:Connect(function()
         local c = mf.Position; local a = Config.DragSmooth
         mf.Position = UDim2.new(
-            0, c.X.Offset + (targetPos.X.Offset - c.X.Offset) * (1 - a),
-            0, c.Y.Offset + (targetPos.Y.Offset - c.Y.Offset) * (1 - a))
+            0.5, c.X.Offset + (targetPos.X.Offset - c.X.Offset) * (1 - a),
+            0.5, c.Y.Offset + (targetPos.Y.Offset - c.Y.Offset) * (1 - a))
     end)
 
     -- ── Sidebar ───────────────────────────────────────────────
@@ -870,15 +858,14 @@ function ModernNoir.CreateWindow(title)
     sdiv.Size = UDim2.new(0,1,1,0); sdiv.Position = UDim2.new(1,0,0,0)
     sdiv.BackgroundColor3 = Theme.Border; sdiv.BorderSizePixel = 0; sdiv.Parent = sb
 
-    -- ScrollingFrame da sidebar para suportar muitas abas sem sobrepor brand
     local sbScroll = Instance.new("ScrollingFrame")
-    sbScroll.Size = UDim2.new(1,-1,1,-28)  -- -28 para deixar espaço ao brand
+    sbScroll.Size = UDim2.new(1,-1,1,-28)
     sbScroll.BackgroundTransparency = 1; sbScroll.BorderSizePixel = 0
-    sbScroll.ScrollBarThickness = 0   -- sem scrollbar visível na sidebar
+    sbScroll.ScrollBarThickness = 0
     sbScroll.CanvasSize = UDim2.new(0,0,0,0)
     sbScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
     sbScroll.ScrollingDirection = Enum.ScrollingDirection.Y
-    sbScroll.ClipsDescendants = true  -- impede indicator de vazar para fora
+    sbScroll.ClipsDescendants = true
     sbScroll.Parent = sb
 
     local tList = Instance.new("UIListLayout")
@@ -889,7 +876,6 @@ function ModernNoir.CreateWindow(title)
     sPad.PaddingTop = UDim.new(0,10); sPad.PaddingLeft = UDim.new(0,0)
     sPad.PaddingRight = UDim.new(0,6); sPad.Parent = sbScroll
 
-    -- FIX [6]: brand em frame separado, fora do UIListLayout
     local brandFrame = Instance.new("Frame")
     brandFrame.Size = UDim2.new(1,-1,0,28); brandFrame.Position = UDim2.new(0,0,1,-28)
     brandFrame.BackgroundColor3 = Theme.Surface; brandFrame.BorderSizePixel = 0
@@ -924,7 +910,6 @@ function ModernNoir.CreateWindow(title)
     local destroyed = false
     local function doDestroy()
         if destroyed then return end; destroyed = true
-        -- FIX [1]: desconecta loops globais
         renderConn:Disconnect()
         uiChangedConn:Disconnect()
         Util.Tween(mf, Config.TweenFast, {BackgroundTransparency=1})
@@ -961,16 +946,14 @@ function ModernNoir.CreateWindow(title)
         name = name or ("Aba " .. (#self._Tabs + 1))
         local idx = #self._Tabs + 1
 
-        -- Botão da aba
         local tbtn = Instance.new("TextButton")
         tbtn.Size = UDim2.new(1,0,0,Config.TabH)
         tbtn.BackgroundColor3 = Theme.Surface; tbtn.BorderSizePixel = 0
         tbtn.Text = ""; tbtn.AutoButtonColor = false
         tbtn.LayoutOrder = idx; tbtn.ClipsDescendants = false
-        tbtn.Parent = sbScroll   -- pai é o ScrollingFrame da sidebar
+        tbtn.Parent = sbScroll
         Util.Corner(tbtn, UDim.new(0,5))
 
-        -- Indicator
         local ind = Instance.new("Frame")
         ind.AnchorPoint = Vector2.new(0,0.5)
         ind.Size = UDim2.new(0, Config.TabIndW, 1, -10)
@@ -979,7 +962,6 @@ function ModernNoir.CreateWindow(title)
         ind.BorderSizePixel = 0; ind.ZIndex = 2; ind.Parent = tbtn
         Util.Corner(ind, UDim.new(0,2))
 
-        -- Ícone/texto
         local tIco = Instance.new("ImageLabel")
         tIco.Size = UDim2.new(0,14,0,14); tIco.Position = UDim2.new(0,14,0.5,-7)
         tIco.BackgroundTransparency = 1; tIco.ZIndex = 3
@@ -1014,7 +996,6 @@ function ModernNoir.CreateWindow(title)
             Util.Tween(tlbl, Config.TweenFast, {TextColor3 = Theme.TextSecondary})
         end)
 
-        -- Canvas + Scroll de conteúdo
         local canvas = Instance.new("CanvasGroup")
         canvas.Size = UDim2.new(1,0,1,0)
         canvas.BackgroundTransparency = 1; canvas.GroupTransparency = 1
@@ -1051,7 +1032,6 @@ function ModernNoir.CreateWindow(title)
             Util.Tween(scrl, Config.TweenFast, {ScrollBarImageColor3 = Theme.ScrollBar})
         end)
 
-        -- Tab object
         local Tab = {}
         Tab.Name        = name
         Tab.ScrollFrame = scrl
@@ -1085,7 +1065,6 @@ function ModernNoir.CreateWindow(title)
 
         table.insert(self._Tabs, Tab)
 
-        -- Auto-seleciona a primeira aba
         if #self._Tabs == 1 then
             task.delay(Config.TweenMedium.Time, function()
                 SwitchTab(self, Tab)
