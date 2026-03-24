@@ -1,6 +1,12 @@
 -- ════════════════════════════════════════════════
---  SERVIÇOS
+--  ModernNoir UI Library v0.3.1
+--  Compatível com executores Roblox (gethui/CoreGui/PlayerGui)
+--  Otimizado para baixo uso de memória e sem memory leaks
 -- ════════════════════════════════════════════════
+
+-- ────────────────────────────────────────────────
+--  SERVIÇOS
+-- ────────────────────────────────────────────────
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -8,6 +14,7 @@ local RunService       = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
+-- Seleciona o container de GUI compatível com executores
 local function getContainer()
     if gethui then return gethui() end
     local ok, cg = pcall(game.GetService, game, "CoreGui")
@@ -16,9 +23,9 @@ local function getContainer()
 end
 local GuiParent = getContainer()
 
--- ════════════════════════════════════════════════
---  PALETA
--- ════════════════════════════════════════════════
+-- ────────────────────────────────────────────────
+--  PALETA DE CORES
+-- ────────────────────────────────────────────────
 local Theme = {
     Background     = Color3.fromHex("#1A1C1E"),
     Surface        = Color3.fromHex("#22252A"),
@@ -66,9 +73,9 @@ local Theme = {
     SearchBorder   = Color3.fromHex("#2A2E33"),
 }
 
--- ════════════════════════════════════════════════
---  CONFIG
--- ════════════════════════════════════════════════
+-- ────────────────────────────────────────────────
+--  CONFIGURAÇÕES DE LAYOUT E ANIMAÇÃO
+-- ────────────────────────────────────────────────
 local Config = {
     WindowWidth   = 620,
     WindowHeight  = 420,
@@ -131,33 +138,33 @@ local Config = {
     ProgressH     = 44,
     ProgressBarH  = 6,
 
+    -- ColorPicker: svSize é calculado em runtime, mas guardamos o painel base
     ColorPickerH  = 36,
     ColorPanelW   = 180,
-    ColorPanelH   = 180,
+    -- svSize = ColorPanelW - 16 (padding) - 20 (hue slider) = 144
+    ColorSVSize   = 144,
+    ColorHueW     = 14,
+    ColorHueGap   = 6,
 
     SearchH       = 28,
 }
 
--- ════════════════════════════════════════════════
+-- ────────────────────────────────────────────────
 --  UTILITÁRIOS
--- ════════════════════════════════════════════════
+-- ────────────────────────────────────────────────
 local Util = {}
 
-local _activeTweens = {}
+-- Weak table para não segurar referências de objetos destruídos
+-- Chave = instância (weak), valor = tween ativo
+local _tweenCache = setmetatable({}, {__mode = "k"})
 
+-- Cancela tween anterior do mesmo objeto e inicia novo
 function Util.Tween(obj, info, props)
-    local key = tostring(obj)
-    if _activeTweens[key] then
-        _activeTweens[key]:Cancel()
-    end
+    local prev = _tweenCache[obj]
+    if prev then prev:Cancel() end
     local t = TweenService:Create(obj, info, props)
-    _activeTweens[key] = t
+    _tweenCache[obj] = t
     t:Play()
-    t.Completed:Connect(function()
-        if _activeTweens[key] == t then
-            _activeTweens[key] = nil
-        end
-    end)
     return t
 end
 
@@ -165,6 +172,7 @@ function Util.Clamp(v, lo, hi)
     return math.max(lo, math.min(hi, v))
 end
 
+-- Adiciona UICorner à instância
 function Util.Corner(obj, r)
     local c = Instance.new("UICorner")
     c.CornerRadius = r or Config.Corner
@@ -172,6 +180,7 @@ function Util.Corner(obj, r)
     return c
 end
 
+-- Adiciona UIStroke à instância
 function Util.Stroke(obj, color, thickness)
     local s = Instance.new("UIStroke")
     s.Color           = color     or Theme.Border
@@ -181,25 +190,17 @@ function Util.Stroke(obj, color, thickness)
     return s
 end
 
--- Converte HSV para Color3
-function Util.HSVtoColor3(h, s, v)
-    return Color3.fromHSV(h, s, v)
-end
-
--- Converte Color3 para HSV
-function Util.Color3toHSV(color)
-    return Color3.toHSV(color)
-end
-
--- Converte Color3 para hex string
+-- Conversões HSV ↔ Color3 ↔ Hex
+function Util.HSVtoColor3(h, s, v) return Color3.fromHSV(h, s, v) end
+function Util.Color3toHSV(color)   return Color3.toHSV(color) end
 function Util.Color3toHex(color)
     return string.format("%02X%02X%02X",
         math.floor(color.R * 255 + 0.5),
         math.floor(color.G * 255 + 0.5),
-        math.floor(color.B * 255 + 0.5)
-    )
+        math.floor(color.B * 255 + 0.5))
 end
 
+-- Cria botão circular no header (close/minimize)
 function Util.HeaderButton(parent, pos, colNorm, colHover, sym)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0,14,0,14); btn.Position = pos
@@ -226,6 +227,47 @@ function Util.HeaderButton(parent, pos, colNorm, colHover, sym)
     return btn
 end
 
+-- Helper: cria frame base de widget com corner e stroke
+function Util.WidgetBase(parent, order, h)
+    local wrap = Instance.new("Frame")
+    wrap.Size = UDim2.new(1,0,0, h or Config.WidgetH)
+    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
+    wrap.LayoutOrder = order; wrap.Parent = parent
+
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,1,0)
+    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
+    f.Parent = wrap
+    Util.Corner(f, Config.WidgetCorner)
+    local stroke = Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+
+    return wrap, f, stroke
+end
+
+-- Helper: adiciona hover simples em frame com stroke
+function Util.HoverEffect(hit, f, stroke, strokeHover, strokeNorm)
+    strokeHover = strokeHover or Theme.Accent
+    strokeNorm  = strokeNorm  or Theme.Border
+    hit.MouseEnter:Connect(function()
+        Util.Tween(f,      Config.TweenFast, {BackgroundColor3 = Theme.WidgetBgHover})
+        Util.Tween(stroke, Config.TweenFast, {Color = strokeHover})
+    end)
+    hit.MouseLeave:Connect(function()
+        Util.Tween(f,      Config.TweenFast, {BackgroundColor3 = Theme.WidgetBg})
+        Util.Tween(stroke, Config.TweenFast, {Color = strokeNorm})
+    end)
+end
+
+-- Desconecta lista de RBXScriptConnections com segurança
+function Util.DisconnectAll(list)
+    for _, c in ipairs(list) do
+        if typeof(c) == "RBXScriptConnection" and c.Connected then
+            c:Disconnect()
+        end
+    end
+    table.clear(list)
+end
+
 -- ════════════════════════════════════════════════
 --  WIDGETS
 -- ════════════════════════════════════════════════
@@ -235,17 +277,7 @@ local Widgets = {}
 --  BUTTON
 -- ────────────────────────────────────────────────
 function Widgets.Button(scroll, text, order, cb)
-    local wrap = Instance.new("Frame")
-    wrap.Size = UDim2.new(1,0,0,Config.WidgetH)
-    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
-    wrap.LayoutOrder = order; wrap.Parent = scroll
-
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1,0,1,0)
-    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
-    f.Parent = wrap
-    Util.Corner(f, Config.WidgetCorner)
-    local stroke = Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+    local wrap, f, stroke = Util.WidgetBase(scroll, order)
 
     local scale = Instance.new("UIScale"); scale.Scale = 1; scale.Parent = f
 
@@ -274,8 +306,8 @@ function Widgets.Button(scroll, text, order, cb)
     hit.Size = UDim2.new(1,0,1,0); hit.BackgroundTransparency = 1
     hit.Text = ""; hit.ZIndex = 5; hit.AutoButtonColor = false; hit.Parent = f
 
-    local tPress   = TweenInfo.new(Config.PressT,  Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-    local tRelease = TweenInfo.new(Config.ReleaseT, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
+    local tPress   = TweenInfo.new(Config.PressT,   Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+    local tRelease = TweenInfo.new(Config.ReleaseT,  Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
     local hovered  = false
 
     hit.MouseEnter:Connect(function()
@@ -326,17 +358,7 @@ end
 function Widgets.Toggle(scroll, text, default, order, cb)
     local state = (default == true)
 
-    local wrap = Instance.new("Frame")
-    wrap.Size = UDim2.new(1,0,0,Config.WidgetH)
-    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
-    wrap.LayoutOrder = order; wrap.Parent = scroll
-
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1,0,1,0)
-    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
-    f.Parent = wrap
-    Util.Corner(f, Config.WidgetCorner)
-    Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+    local wrap, f, _ = Util.WidgetBase(scroll, order)
 
     local sico = Instance.new("TextLabel")
     sico.Size = UDim2.new(0,16,1,0); sico.Position = UDim2.new(0,10,0,0)
@@ -355,54 +377,48 @@ function Widgets.Toggle(scroll, text, default, order, cb)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.ZIndex = 2; lbl.Parent = f
 
-    local toggleWidth  = Config.ToggleW
-    local toggleHeight = Config.ToggleH
+    local tW = Config.ToggleW
+    local tH = Config.ToggleH
 
     local track = Instance.new("Frame")
-    track.Size = UDim2.new(0, toggleWidth, 0, toggleHeight)
-    track.Position = UDim2.new(1, -(toggleWidth + 10), 0.5, -toggleHeight / 2)
+    track.Size = UDim2.new(0, tW, 0, tH)
+    track.Position = UDim2.new(1, -(tW + 10), 0.5, -tH / 2)
     track.BackgroundColor3 = state and Theme.Accent or Theme.ToggleOffTrack
     track.BorderSizePixel = 0; track.ZIndex = 3; track.Parent = f
     Util.Corner(track, UDim.new(1,0))
     local trackStroke = Util.Stroke(track, Theme.Accent, Config.WidgetBorderW)
     trackStroke.Transparency = state and 0 or 1
 
-    local knobSize = Config.KnobSize
-    local knobPad  = Config.KnobPad
-    local knobOffX = knobPad
-    local knobOnX  = toggleWidth - knobSize - knobPad
+    local kS   = Config.KnobSize
+    local kPad = Config.KnobPad
+    local knobOffX = kPad
+    local knobOnX  = tW - kS - kPad
 
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0, knobSize, 0, knobSize)
-    knob.Position = UDim2.new(0, state and knobOnX or knobOffX, 0.5, -knobSize / 2)
+    knob.Size = UDim2.new(0, kS, 0, kS)
+    knob.Position = UDim2.new(0, state and knobOnX or knobOffX, 0.5, -kS / 2)
     knob.BackgroundColor3 = state and Theme.ToggleKnobOn or Theme.ToggleKnob
     knob.BorderSizePixel = 0; knob.ZIndex = 5; knob.Parent = track
     Util.Corner(knob, UDim.new(1,0))
 
-    local function apply(s, animate)
-        local tweenMove  = animate and Config.ToggleMoveT  or TweenInfo.new(0)
-        local tweenColor = animate and Config.ToggleColorT or TweenInfo.new(0)
+    local function applyState(s, animate)
+        local tMove  = animate and Config.ToggleMoveT  or TweenInfo.new(0)
+        local tColor = animate and Config.ToggleColorT or TweenInfo.new(0)
         if s then
-            Util.Tween(track,       tweenColor, {BackgroundColor3 = Theme.Accent})
-            Util.Tween(trackStroke, tweenColor, {Transparency = 0})
-            Util.Tween(knob, tweenMove, {
-                Position         = UDim2.new(0, knobOnX, 0.5, -knobSize / 2),
-                BackgroundColor3 = Theme.ToggleKnobOn,
-            })
-            Util.Tween(sico, tweenColor, {TextColor3 = Theme.Accent})
+            Util.Tween(track,       tColor, {BackgroundColor3 = Theme.Accent})
+            Util.Tween(trackStroke, tColor, {Transparency = 0})
+            Util.Tween(knob, tMove, {Position = UDim2.new(0, knobOnX, 0.5, -kS/2), BackgroundColor3 = Theme.ToggleKnobOn})
+            Util.Tween(sico, tColor, {TextColor3 = Theme.Accent})
             sico.Text = "●"
         else
-            Util.Tween(track,       tweenColor, {BackgroundColor3 = Theme.ToggleOffTrack})
-            Util.Tween(trackStroke, tweenColor, {Transparency = 1})
-            Util.Tween(knob, tweenMove, {
-                Position         = UDim2.new(0, knobOffX, 0.5, -knobSize / 2),
-                BackgroundColor3 = Theme.ToggleKnob,
-            })
-            Util.Tween(sico, tweenColor, {TextColor3 = Theme.TextDisabled})
+            Util.Tween(track,       tColor, {BackgroundColor3 = Theme.ToggleOffTrack})
+            Util.Tween(trackStroke, tColor, {Transparency = 1})
+            Util.Tween(knob, tMove, {Position = UDim2.new(0, knobOffX, 0.5, -kS/2), BackgroundColor3 = Theme.ToggleKnob})
+            Util.Tween(sico, tColor, {TextColor3 = Theme.TextDisabled})
             sico.Text = "○"
         end
     end
-    apply(state, false)
+    applyState(state, false)
 
     local hit = Instance.new("TextButton")
     hit.Size = UDim2.new(1,0,1,0); hit.BackgroundTransparency = 1
@@ -416,14 +432,14 @@ function Widgets.Toggle(scroll, text, default, order, cb)
     end)
     hit.MouseButton1Click:Connect(function()
         state = not state
-        apply(state, true)
+        applyState(state, true)
         if cb then pcall(cb, state) end
     end)
 
     local obj = {}
     function obj:GetState() return state end
     function obj:SetState(s, silent)
-        state = s; apply(state, true)
+        state = s; applyState(state, true)
         if not silent and cb then pcall(cb, state) end
     end
     function obj:SetText(t) lbl.Text = t end
@@ -437,19 +453,14 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     minV    = minV or 0
     maxV    = maxV or 100
     default = Util.Clamp(default or minV, minV, maxV)
+
+    -- BUG FIX: força inteiro se AMBOS min e max forem inteiros
+    local isInt = (math.floor(minV) == minV) and (math.floor(maxV) == maxV)
+    if isInt then default = math.round(default) end
+
     local value = default
 
-    local wrap = Instance.new("Frame")
-    wrap.Size = UDim2.new(1,0,0,Config.SliderH)
-    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
-    wrap.LayoutOrder = order; wrap.Parent = scroll
-
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1,0,1,0)
-    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
-    f.Parent = wrap
-    Util.Corner(f, Config.WidgetCorner)
-    Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+    local wrap, f, _ = Util.WidgetBase(scroll, order, Config.SliderH)
 
     local pad = Instance.new("UIPadding")
     pad.PaddingLeft   = UDim.new(0,10); pad.PaddingRight  = UDim.new(0,10)
@@ -478,16 +489,16 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
 
     local valLbl = Instance.new("TextLabel")
     valLbl.Size = UDim2.new(1,0,1,0); valLbl.BackgroundTransparency = 1
-    valLbl.Text = tostring(math.round(value))
+    valLbl.Text = tostring(isInt and math.round(value) or value)
     valLbl.Font = Enum.Font.GothamBold; valLbl.TextSize = 11
     valLbl.TextColor3 = Theme.Accent
     valLbl.TextXAlignment = Enum.TextXAlignment.Center
     valLbl.ZIndex = 3; valLbl.Parent = badge
 
-    local trackHeight = Config.SliderTrackH
+    local tH = Config.SliderTrackH
 
     local track = Instance.new("Frame")
-    track.Size = UDim2.new(1,0,0,trackHeight)
+    track.Size = UDim2.new(1,0,0,tH)
     track.Position = UDim2.new(0,0,0,20)
     track.BackgroundColor3 = Theme.SliderTrack
     track.BorderSizePixel = 0; track.ZIndex = 2; track.Parent = f
@@ -499,10 +510,10 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     fill.BorderSizePixel = 0; fill.ZIndex = 3; fill.Parent = track
     Util.Corner(fill, UDim.new(1,0))
 
-    local knobSize = Config.SliderKnobS
+    local kS = Config.SliderKnobS
 
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0, knobSize, 0, knobSize)
+    knob.Size = UDim2.new(0, kS, 0, kS)
     knob.AnchorPoint = Vector2.new(0.5, 0.5)
     knob.Position = UDim2.new(0,0,0.5,0)
     knob.BackgroundColor3 = Theme.SliderKnob
@@ -530,31 +541,29 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
 
     local function applyValue(v)
         value = Util.Clamp(v, minV, maxV)
+        if isInt then value = math.round(value) end  -- BUG FIX: garante inteiro
         local ratio = (value - minV) / (maxV - minV)
         fill.Size     = UDim2.new(ratio, 0, 1, 0)
         knob.Position = UDim2.new(ratio, 0, 0.5, 0)
-        valLbl.Text   = tostring(math.round(value))
+        valLbl.Text   = tostring(value)
     end
     applyValue(value)
 
     local hitbox = Instance.new("TextButton")
-    hitbox.Size = UDim2.new(1,0,0, trackHeight + 20)
+    hitbox.Size = UDim2.new(1,0,0, tH + 20)
     hitbox.Position = UDim2.new(0,0,0,10)
     hitbox.BackgroundTransparency = 1; hitbox.Text = ""
     hitbox.ZIndex = 7; hitbox.AutoButtonColor = false; hitbox.Parent = f
 
     local dragging  = false
-    local moveConn  = nil
-    local endedConn = nil
-
-    local isInt = (math.floor(minV) == minV) and (math.floor(maxV) == maxV)
+    local conns     = {}  -- lista de conexões do drag
 
     local function applyFromX(absX)
-        local trackWidth = track.AbsoluteSize.X
-        if trackWidth == 0 then return end
-        local relX = Util.Clamp(absX - track.AbsolutePosition.X, 0, trackWidth)
-        local v = minV + (relX / trackWidth) * (maxV - minV)
-        v = isInt and math.round(v) or (math.floor(v * 100 + 0.5) / 100)
+        local trackW = track.AbsoluteSize.X
+        if trackW == 0 then return end
+        local relX = Util.Clamp(absX - track.AbsolutePosition.X, 0, trackW)
+        local v = minV + (relX / trackW) * (maxV - minV)
+        if isInt then v = math.round(v) end
         v = Util.Clamp(v, minV, maxV)
         if v ~= value then
             applyValue(v)
@@ -562,15 +571,14 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
         end
     end
 
-    local function cleanupDrag()
+    local function stopDrag()
+        if not dragging then return end
         dragging = false
-        if moveConn  then moveConn:Disconnect();  moveConn  = nil end
-        if endedConn then endedConn:Disconnect(); endedConn = nil end
+        Util.DisconnectAll(conns)
+        Util.Tween(knob,       Config.TweenFast, {BackgroundColor3 = Theme.SliderKnob})
+        Util.Tween(knobStroke, Config.TweenFast, {Color = Theme.Accent, Thickness = 1.5})
+        Util.Tween(f,          Config.TweenFast, {BackgroundColor3 = Theme.WidgetBg})
     end
-
-    wrap.AncestryChanged:Connect(function()
-        if not wrap.Parent then cleanupDrag() end
-    end)
 
     hitbox.MouseEnter:Connect(function()
         Util.Tween(f, Config.TweenFast, {BackgroundColor3 = Theme.WidgetBgHover})
@@ -587,20 +595,21 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
         Util.Tween(knobStroke, Config.TweenFast, {Color = Theme.AccentGlow, Thickness = 2})
         applyFromX(UserInputService:GetMouseLocation().X)
 
-        moveConn = UserInputService.InputChanged:Connect(function(inp)
+        conns[1] = UserInputService.InputChanged:Connect(function(inp)
             if inp.UserInputType == Enum.UserInputType.MouseMovement then
                 applyFromX(inp.Position.X)
             end
         end)
-
-        endedConn = UserInputService.InputEnded:Connect(function(inp)
+        conns[2] = UserInputService.InputEnded:Connect(function(inp)
             if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                cleanupDrag()
-                Util.Tween(knob,       Config.TweenFast, {BackgroundColor3 = Theme.SliderKnob})
-                Util.Tween(knobStroke, Config.TweenFast, {Color = Theme.Accent, Thickness = 1.5})
-                Util.Tween(f,          Config.TweenFast, {BackgroundColor3 = Theme.WidgetBg})
+                stopDrag()
             end
         end)
+    end)
+
+    -- Limpa drag se widget for removido da hierarquia
+    wrap.AncestryChanged:Connect(function()
+        if not wrap.Parent then stopDrag() end
     end)
 
     local obj = {}
@@ -622,17 +631,11 @@ function Widgets.Section(scroll, text, order)
     wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
     wrap.LayoutOrder = order; wrap.Parent = scroll
 
-    local lineR = Instance.new("Frame")
-    lineR.Size = UDim2.new(1,0,0,1)
-    lineR.Position = UDim2.new(0,0,0.5,0)
-    lineR.BackgroundColor3 = Theme.SectionLine; lineR.BorderSizePixel = 0
-    lineR.ZIndex = 1; lineR.Parent = wrap
-
-    local lineL = Instance.new("Frame")
-    lineL.Size = UDim2.new(0,10,0,1)
-    lineL.Position = UDim2.new(0,0,0.5,0)
-    lineL.BackgroundColor3 = Theme.SectionLine; lineL.BorderSizePixel = 0
-    lineL.Parent = wrap
+    local line = Instance.new("Frame")
+    line.Size = UDim2.new(1,0,0,1)
+    line.Position = UDim2.new(0,0,0.5,0)
+    line.BackgroundColor3 = Theme.SectionLine; line.BorderSizePixel = 0
+    line.ZIndex = 1; line.Parent = wrap
 
     local lbl = Instance.new("TextLabel")
     lbl.Size = UDim2.new(1,-28,1,0)
@@ -641,6 +644,9 @@ function Widgets.Section(scroll, text, order)
     lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 9
     lbl.TextColor3 = Theme.SectionText
     lbl.TextXAlignment = Enum.TextXAlignment.Left
+    -- Fundo para "cortar" a linha atrás do texto
+    lbl.BackgroundColor3 = Theme.Background
+    lbl.BackgroundTransparency = 0
     lbl.ZIndex = 2; lbl.Parent = wrap
 
     local obj = {}
@@ -668,17 +674,7 @@ end
 --  LABEL
 -- ────────────────────────────────────────────────
 function Widgets.Label(scroll, text, order)
-    local wrap = Instance.new("Frame")
-    wrap.Size = UDim2.new(1,0,0,Config.LabelH)
-    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
-    wrap.LayoutOrder = order; wrap.Parent = scroll
-
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1,0,1,0)
-    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
-    f.Parent = wrap
-    Util.Corner(f, Config.WidgetCorner)
-    Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+    local wrap, f, _ = Util.WidgetBase(scroll, order, Config.LabelH)
 
     local pad = Instance.new("UIPadding")
     pad.PaddingLeft  = UDim.new(0,12); pad.PaddingRight = UDim.new(0,12)
@@ -703,17 +699,7 @@ end
 --  TEXTBOX
 -- ────────────────────────────────────────────────
 function Widgets.Textbox(scroll, text, placeholder, default, order, cb)
-    local wrap = Instance.new("Frame")
-    wrap.Size = UDim2.new(1,0,0,Config.TextboxH)
-    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
-    wrap.LayoutOrder = order; wrap.Parent = scroll
-
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1,0,1,0)
-    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
-    f.Parent = wrap
-    Util.Corner(f, Config.WidgetCorner)
-    local stroke = Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+    local wrap, f, stroke = Util.WidgetBase(scroll, order, Config.TextboxH)
 
     local nameLbl = Instance.new("TextLabel")
     nameLbl.Size = UDim2.new(0.45,0,1,0); nameLbl.Position = UDim2.new(0,12,0,0)
@@ -765,6 +751,8 @@ end
 
 -- ────────────────────────────────────────────────
 --  DROPDOWN
+-- BUG FIX: SetOptions agora reseta selected corretamente
+-- BUG FIX: outsideConn desconectado via AncestryChanged
 -- ────────────────────────────────────────────────
 local _openDropdownClose = nil
 
@@ -855,6 +843,7 @@ function Widgets.Dropdown(scroll, text, options, default, order, cb)
     local function closeList()
         if not isOpen then return end
         isOpen = false
+        if _openDropdownClose == closeList then _openDropdownClose = nil end
         Util.Tween(listFrame, Config.TweenFast, {Size = UDim2.new(0.52,0,0,0)})
         Util.Tween(arrowLbl,  Config.TweenFast, {TextColor3 = Theme.DropdownArrow})
         Util.Tween(valStroke, Config.TweenFast, {Color = Theme.InputBorder})
@@ -862,15 +851,13 @@ function Widgets.Dropdown(scroll, text, options, default, order, cb)
         task.delay(Config.TweenFast.Time + 0.02, function()
             if not isOpen then listFrame.Visible = false end
         end)
-        _openDropdownClose = nil
     end
 
     local function openList()
         if _openDropdownClose then _openDropdownClose() end
         _openDropdownClose = closeList
         isOpen = true
-        local totalH  = #options * Config.DropdownItemH + 8
-        local clampedH = math.min(totalH, Config.DropdownMaxH)
+        local clampedH = math.min(#options * Config.DropdownItemH + 8, Config.DropdownMaxH)
         listFrame.Visible = true
         listFrame.Size    = UDim2.new(0.52,0,0,0)
         Util.Tween(listFrame, Config.TweenFast, {Size = UDim2.new(0.52,0,0,clampedH)})
@@ -879,6 +866,7 @@ function Widgets.Dropdown(scroll, text, options, default, order, cb)
         Util.Tween(stroke,    Config.TweenFast, {Color = Theme.Accent})
     end
 
+    -- BUG FIX: populateItems agora remove corretamente todos os filhos antes de repopular
     local function populateItems()
         for _, child in ipairs(listScroll:GetChildren()) do
             if child:IsA("TextButton") then child:Destroy() end
@@ -920,15 +908,14 @@ function Widgets.Dropdown(scroll, text, options, default, order, cb)
                 })
             end)
             itemBtn.MouseButton1Click:Connect(function()
+                -- Reseta visual de todos os itens
                 for _, child2 in ipairs(listScroll:GetChildren()) do
                     if child2:IsA("TextButton") then
+                        local cl = child2:FindFirstChild("checkLbl")
+                        if cl then cl.Text = "" end
                         for _, lc in ipairs(child2:GetChildren()) do
-                            if lc:IsA("TextLabel") then
-                                if lc.Name == "checkLbl" then
-                                    lc.Text = ""
-                                else
-                                    Util.Tween(lc, Config.TweenFast, {TextColor3 = Theme.TextSecondary})
-                                end
+                            if lc:IsA("TextLabel") and lc.Name ~= "checkLbl" then
+                                Util.Tween(lc, Config.TweenFast, {TextColor3 = Theme.TextSecondary})
                             end
                         end
                     end
@@ -948,6 +935,7 @@ function Widgets.Dropdown(scroll, text, options, default, order, cb)
         if isOpen then closeList() else openList() end
     end)
 
+    -- BUG FIX: usa 1 conexão guardada para fechar ao clicar fora
     local outsideConn = UserInputService.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 and isOpen then
             task.defer(function()
@@ -972,9 +960,11 @@ function Widgets.Dropdown(scroll, text, options, default, order, cb)
             if not silent and cb then pcall(cb, selected) end
         end
     end
-    function obj:SetOptions(newOptions)
+    -- BUG FIX: SetOptions fecha lista aberta, reseta selected e repopula items
+    function obj:SetOptions(newOptions, newDefault)
+        if isOpen then closeList() end
         options  = newOptions or {}
-        selected = options[1] or ""
+        selected = newDefault or options[1] or ""
         selLbl.Text = tostring(selected)
         populateItems()
     end
@@ -984,22 +974,14 @@ end
 
 -- ────────────────────────────────────────────────
 --  KEYBIND
+-- BUG FIX: agora permite bindar MouseButton1/2/3
+-- BUG FIX: limpeza de inputConn via lista de conexões
 -- ────────────────────────────────────────────────
 function Widgets.Keybind(scroll, text, default, order, cb)
-    local boundKey  = default or nil
+    local boundKey  = default or nil  -- pode ser KeyCode ou UserInputType (para mouse)
     local listening = false
 
-    local wrap = Instance.new("Frame")
-    wrap.Size = UDim2.new(1,0,0,Config.KeybindH)
-    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
-    wrap.LayoutOrder = order; wrap.Parent = scroll
-
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1,0,1,0)
-    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
-    f.Parent = wrap
-    Util.Corner(f, Config.WidgetCorner)
-    local stroke = Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+    local wrap, f, stroke = Util.WidgetBase(scroll, order, Config.KeybindH)
 
     local sico = Instance.new("TextLabel")
     sico.Size = UDim2.new(0,16,1,0); sico.Position = UDim2.new(0,10,0,0)
@@ -1026,10 +1008,27 @@ function Widgets.Keybind(scroll, text, default, order, cb)
     Util.Corner(keyBtn, UDim.new(0,5))
     local keyStroke = Util.Stroke(keyBtn, Theme.KeybindBorder, 1)
 
+    -- Retorna nome legível para qualquer tipo de bind
+    local function getBindName(bind)
+        if bind == nil then return "None" end
+        if typeof(bind) == "EnumItem" then
+            if bind.EnumType == Enum.KeyCode then
+                return bind.Name
+            elseif bind.EnumType == Enum.UserInputType then
+                -- Nomes amigáveis para botões do mouse
+                if bind == Enum.UserInputType.MouseButton1 then return "M1" end
+                if bind == Enum.UserInputType.MouseButton2 then return "M2" end
+                if bind == Enum.UserInputType.MouseButton3 then return "M3" end
+                return bind.Name
+            end
+        end
+        return "None"
+    end
+
     local keyLbl = Instance.new("TextLabel")
     keyLbl.Size = UDim2.new(1,0,1,0)
     keyLbl.BackgroundTransparency = 1
-    keyLbl.Text = boundKey and boundKey.Name or "None"
+    keyLbl.Text = getBindName(boundKey)
     keyLbl.Font = Enum.Font.GothamBold; keyLbl.TextSize = 10
     keyLbl.TextColor3 = boundKey and Theme.Accent or Theme.TextDisabled
     keyLbl.TextXAlignment = Enum.TextXAlignment.Center
@@ -1044,7 +1043,7 @@ function Widgets.Keybind(scroll, text, default, order, cb)
         Util.Tween(stroke,    Config.TweenFast, {Color = Theme.Border})
         Util.Tween(f,         Config.TweenFast, {BackgroundColor3 = Theme.WidgetBg})
         Util.Tween(keyLbl,    Config.TweenFast, {TextColor3 = boundKey and Theme.Accent or Theme.TextDisabled})
-        keyLbl.Text = boundKey and boundKey.Name or "None"
+        keyLbl.Text = getBindName(boundKey)
     end
 
     local function startListening()
@@ -1057,9 +1056,23 @@ function Widgets.Keybind(scroll, text, default, order, cb)
 
         inputConn = UserInputService.InputBegan:Connect(function(inp, gameProcessed)
             if not listening then return end
+
+            -- BUG FIX: aceita MouseButton1/2/3 como bind
             if inp.UserInputType == Enum.UserInputType.MouseButton1
             or inp.UserInputType == Enum.UserInputType.MouseButton2
-            or inp.UserInputType == Enum.UserInputType.MouseButton3 then return end
+            or inp.UserInputType == Enum.UserInputType.MouseButton3 then
+                -- Ignora clique no próprio botão de keybind ao iniciar listening
+                -- (o clique que ativou o listening)
+                -- usa task.defer para evitar capturar o mesmo clique
+                task.defer(function()
+                    if not listening then return end
+                    boundKey = inp.UserInputType
+                    stopListening()
+                    if cb then pcall(cb, boundKey) end
+                end)
+                return
+            end
+
             if inp.UserInputType == Enum.UserInputType.Keyboard then
                 if inp.KeyCode == Enum.KeyCode.Escape then
                     stopListening(); return
@@ -1103,20 +1116,9 @@ end
 --  PROGRESS BAR
 -- ────────────────────────────────────────────────
 function Widgets.ProgressBar(scroll, text, initialValue, order)
-    -- initialValue: 0-1 (proporção). Pode ser passado nil para começar em 0.
     local value = Util.Clamp(initialValue or 0, 0, 1)
 
-    local wrap = Instance.new("Frame")
-    wrap.Size = UDim2.new(1,0,0,Config.ProgressH)
-    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
-    wrap.LayoutOrder = order; wrap.Parent = scroll
-
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1,0,1,0)
-    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
-    f.Parent = wrap
-    Util.Corner(f, Config.WidgetCorner)
-    Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+    local wrap, f, _ = Util.WidgetBase(scroll, order, Config.ProgressH)
 
     local pad = Instance.new("UIPadding")
     pad.PaddingLeft   = UDim.new(0,10); pad.PaddingRight  = UDim.new(0,10)
@@ -1145,10 +1147,8 @@ function Widgets.ProgressBar(scroll, text, initialValue, order)
     pctLbl.TextXAlignment = Enum.TextXAlignment.Right
     pctLbl.ZIndex = 2; pctLbl.Parent = topRow
 
-    local barH = Config.ProgressBarH
-
     local track = Instance.new("Frame")
-    track.Size = UDim2.new(1,0,0,barH)
+    track.Size = UDim2.new(1,0,0,Config.ProgressBarH)
     track.Position = UDim2.new(0,0,0,18)
     track.BackgroundColor3 = Theme.ProgressTrack
     track.BorderSizePixel = 0; track.ZIndex = 2; track.Parent = f
@@ -1160,7 +1160,7 @@ function Widgets.ProgressBar(scroll, text, initialValue, order)
     fill.BorderSizePixel = 0; fill.ZIndex = 3; fill.Parent = track
     Util.Corner(fill, UDim.new(1,0))
 
-    -- brilho no fill (shimmer effect: frame semi-transparente mais claro na direita)
+    -- Shimmer sutil no lado direito do fill
     local shimmer = Instance.new("Frame")
     shimmer.Size = UDim2.new(0.4,0,1,0)
     shimmer.Position = UDim2.new(0.6,0,0,0)
@@ -1172,13 +1172,13 @@ function Widgets.ProgressBar(scroll, text, initialValue, order)
     local function applyValue(v, animate)
         value = Util.Clamp(v, 0, 1)
         pctLbl.Text = math.floor(value * 100) .. "%"
+        local newSize = UDim2.new(value, 0, 1, 0)
         if animate then
             local info = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-            Util.Tween(fill, info, {Size = UDim2.new(value, 0, 1, 0)})
+            Util.Tween(fill, info, {Size = newSize})
         else
-            fill.Size = UDim2.new(value, 0, 1, 0)
+            fill.Size = newSize
         end
-        -- muda cor se completo
         local fillColor = value >= 1 and Theme.NotifySuccess or Theme.ProgressFill
         Util.Tween(fill, Config.TweenFast, {BackgroundColor3 = fillColor})
     end
@@ -1187,7 +1187,6 @@ function Widgets.ProgressBar(scroll, text, initialValue, order)
     local obj = {}
     function obj:GetValue() return value end
     function obj:SetValue(v, animate)
-        -- animate = true por padrão
         applyValue(v, animate ~= false)
     end
     function obj:SetText(t) nameLbl.Text = t or "" end
@@ -1196,12 +1195,8 @@ end
 
 -- ────────────────────────────────────────────────
 --  COLOR PICKER
--- ────────────────────────────────────────────────
--- Painel flutuante com:
---  - Saturation/Value picker (quadrado 2D)
---  - Hue slider (vertical)
---  - Preview da cor atual
---  - Input hex
+-- BUG FIX: totalPanelH e svSize calculados corretamente
+-- BUG FIX: conexões de drag limpas via lista
 -- ────────────────────────────────────────────────
 local _openPickerClose = nil
 
@@ -1230,7 +1225,6 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
     nameLbl.TextXAlignment = Enum.TextXAlignment.Left
     nameLbl.ZIndex = 3; nameLbl.Parent = f
 
-    -- Botão de preview que abre o painel
     local previewBtn = Instance.new("TextButton")
     previewBtn.Size = UDim2.new(0,52,0,22)
     previewBtn.Position = UDim2.new(1,-8,0.5,0)
@@ -1251,13 +1245,21 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
     hexLbl.TextXAlignment = Enum.TextXAlignment.Center
     hexLbl.ZIndex = 4; hexLbl.Parent = previewBtn
 
-    -- Painel flutuante
-    local panelW = Config.ColorPanelW
-    local panelH = Config.ColorPanelH + 60  -- sv picker + hue + preview + hex input
+    -- ── Painel flutuante ──────────────────────────────────────
+    local panelW  = Config.ColorPanelW
+    -- BUG FIX: svSize = panelW - padding(8*2) - hue(14) - hueGap(6) = panelW - 36
+    -- Porém usamos Config.ColorSVSize que já está precalculado: 144
+    local svSize  = Config.ColorSVSize
+    local hueW    = Config.ColorHueW
+    local hueGap  = Config.ColorHueGap
+    local panelPadding = 8  -- UIPadding em cada lado
+
+    -- Altura total: padding_top + svSize + 2(sep gap) + 1(sep) + 2(sep gap) + 28(bottom) + padding_bottom
+    local totalPanelH = panelPadding + svSize + 14 + 1 + 14 + 28 + panelPadding
 
     local panel = Instance.new("Frame")
     panel.Size = UDim2.new(0, panelW, 0, 0)
-    panel.Position = UDim2.new(1, -panelW - 0, 1, 4)
+    panel.Position = UDim2.new(1, -panelW, 1, 4)
     panel.AnchorPoint = Vector2.new(1, 0)
     panel.BackgroundColor3 = Theme.Surface
     panel.BorderSizePixel = 0
@@ -1268,12 +1270,13 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
     Util.Stroke(panel, Theme.Border, 1)
 
     local panelPad = Instance.new("UIPadding")
-    panelPad.PaddingTop    = UDim.new(0,8); panelPad.PaddingBottom = UDim.new(0,8)
-    panelPad.PaddingLeft   = UDim.new(0,8); panelPad.PaddingRight  = UDim.new(0,8)
+    panelPad.PaddingTop    = UDim.new(0, panelPadding)
+    panelPad.PaddingBottom = UDim.new(0, panelPadding)
+    panelPad.PaddingLeft   = UDim.new(0, panelPadding)
+    panelPad.PaddingRight  = UDim.new(0, panelPadding)
     panelPad.Parent = panel
 
     -- SV picker (saturation = X, value = Y invertido)
-    local svSize = panelW - 16 - 20  -- deixa 20px para o hue slider à direita
     local svPicker = Instance.new("ImageLabel")
     svPicker.Size = UDim2.new(0, svSize, 0, svSize)
     svPicker.Position = UDim2.new(0,0,0,0)
@@ -1282,7 +1285,7 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
     svPicker.ZIndex = 31; svPicker.Parent = panel
     Util.Corner(svPicker, UDim.new(0,4))
 
-    -- Gradiente branco (esquerda = branco, direita = puro)
+    -- Gradiente branco horizontal (esquerda = branco opaco, direita = transparente)
     local svGradW = Instance.new("UIGradient")
     svGradW.Color = ColorSequence.new{
         ColorSequenceKeypoint.new(0, Color3.new(1,1,1)),
@@ -1295,7 +1298,7 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
     svGradW.Rotation = 0
     svGradW.Parent = svPicker
 
-    -- Gradiente preto (topo = transparente, baixo = preto)
+    -- Gradiente preto vertical (topo = transparente, baixo = preto)
     local svGradB = Instance.new("Frame")
     svGradB.Size = UDim2.new(1,0,1,0)
     svGradB.BackgroundTransparency = 1
@@ -1326,51 +1329,49 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
     Util.Corner(svCursor, UDim.new(1,0))
     Util.Stroke(svCursor, Color3.new(0,0,0), 1.5)
 
-    -- Hue slider (vertical, lado direito)
+    -- Hue slider vertical (à direita do SV picker)
     local hueSlider = Instance.new("Frame")
-    hueSlider.Size = UDim2.new(0,14,0,svSize)
-    hueSlider.Position = UDim2.new(0, svSize + 6, 0, 0)
+    hueSlider.Size = UDim2.new(0, hueW, 0, svSize)
+    hueSlider.Position = UDim2.new(0, svSize + hueGap, 0, 0)
     hueSlider.BackgroundColor3 = Color3.new(1,1,1)
     hueSlider.BorderSizePixel = 0
     hueSlider.ZIndex = 31; hueSlider.Parent = panel
     Util.Corner(hueSlider, UDim.new(0,4))
 
-    -- Gradiente arco-íris no hue slider
     local hueGrad = Instance.new("UIGradient")
     hueGrad.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0,    Color3.fromHSV(0,   1, 1)),
-        ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17,1, 1)),
-        ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33,1, 1)),
-        ColorSequenceKeypoint.new(0.5,  Color3.fromHSV(0.5, 1, 1)),
-        ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67,1, 1)),
-        ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83,1, 1)),
-        ColorSequenceKeypoint.new(1,    Color3.fromHSV(1,   1, 1)),
+        ColorSequenceKeypoint.new(0,    Color3.fromHSV(0,    1, 1)),
+        ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17, 1, 1)),
+        ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33, 1, 1)),
+        ColorSequenceKeypoint.new(0.5,  Color3.fromHSV(0.5,  1, 1)),
+        ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67, 1, 1)),
+        ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)),
+        ColorSequenceKeypoint.new(1,    Color3.fromHSV(1,    1, 1)),
     }
     hueGrad.Rotation = 90
     hueGrad.Parent = hueSlider
 
-    -- Cursor do hue
     local hueCursor = Instance.new("Frame")
     hueCursor.Size = UDim2.new(1,4,0,4)
     hueCursor.AnchorPoint = Vector2.new(0.5,0.5)
-    hueCursor.Position = UDim2.new(0.5,0, hue, 0)
+    hueCursor.Position = UDim2.new(0.5, 0, hue, 0)
     hueCursor.BackgroundColor3 = Color3.new(1,1,1)
     hueCursor.BorderSizePixel = 0
     hueCursor.ZIndex = 33; hueCursor.Parent = hueSlider
     Util.Corner(hueCursor, UDim.new(0,2))
     Util.Stroke(hueCursor, Color3.new(0,0,0), 1)
 
-    -- Linha de separação
+    -- Separador
     local sep = Instance.new("Frame")
     sep.Size = UDim2.new(1,0,0,1)
-    sep.Position = UDim2.new(0,0,0, svSize + 10)
+    sep.Position = UDim2.new(0,0,0, svSize + 12)
     sep.BackgroundColor3 = Theme.SectionLine; sep.BorderSizePixel = 0
     sep.ZIndex = 31; sep.Parent = panel
 
-    -- Preview + hex na parte inferior
+    -- Linha inferior: preview + input hex
     local bottomRow = Instance.new("Frame")
     bottomRow.Size = UDim2.new(1,0,0,28)
-    bottomRow.Position = UDim2.new(0,0,0, svSize + 14)
+    bottomRow.Position = UDim2.new(0,0,0, svSize + 14 + 1 + 12)
     bottomRow.BackgroundTransparency = 1; bottomRow.BorderSizePixel = 0
     bottomRow.ZIndex = 31; bottomRow.Parent = panel
 
@@ -1395,39 +1396,32 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
     Util.Corner(hexBox, UDim.new(0,5))
     Util.Stroke(hexBox, Theme.InputBorder, 1)
 
-    local totalPanelH = svSize + 14 + 28 + 8 + 16  -- sv + sep + bottom + pad + panelPad
-
-    -- função central: atualiza cor a partir de hue/sat/val
+    -- ── Lógica de cor ─────────────────────────────────────────
     local function applyHSV(h, s, v, fromHex)
         hue = Util.Clamp(h, 0, 1)
         sat = Util.Clamp(s, 0, 1)
         val = Util.Clamp(v, 0, 1)
-
         currentColor = Color3.fromHSV(hue, sat, val)
 
-        -- atualiza visual do sv picker
         svPicker.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
-        svCursor.Position = UDim2.new(sat, 0, 1 - val, 0)
+        svCursor.Position  = UDim2.new(sat, 0, 1 - val, 0)
         hueCursor.Position = UDim2.new(0.5, 0, hue, 0)
 
-        -- atualiza previews
         colorPreview.BackgroundColor3 = currentColor
         previewBtn.BackgroundColor3   = currentColor
         local hexStr = Util.Color3toHex(currentColor)
         if not fromHex then hexBox.Text = hexStr end
         hexLbl.Text = "#" .. hexStr
 
-        -- contraste do texto no preview
+        -- Contraste automático do texto no preview
         local brightness = currentColor.R * 0.299 + currentColor.G * 0.587 + currentColor.B * 0.114
         hexLbl.TextColor3 = brightness > 0.5 and Color3.new(0,0,0) or Color3.new(1,1,1)
 
         if cb then pcall(cb, currentColor) end
     end
 
-    -- drag no SV picker
-    local svDragging = false
-    local svMoveConn = nil
-    local svEndConn  = nil
+    -- ── Drag no SV picker ─────────────────────────────────────
+    local svConns = {}
 
     local function applyFromSVPos(absX, absY)
         local w2 = svPicker.AbsoluteSize.X
@@ -1438,40 +1432,44 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
         applyHSV(hue, s2, v2, false)
     end
 
+    local function stopSVDrag()
+        Util.DisconnectAll(svConns)
+    end
+
     local svHit = Instance.new("TextButton")
     svHit.Size = UDim2.new(1,0,1,0); svHit.BackgroundTransparency = 1
     svHit.Text = ""; svHit.ZIndex = 35; svHit.AutoButtonColor = false
     svHit.Parent = svPicker
 
     svHit.MouseButton1Down:Connect(function()
-        svDragging = true
         local mouse = UserInputService:GetMouseLocation()
         applyFromSVPos(mouse.X, mouse.Y)
+        Util.DisconnectAll(svConns)
 
-        svMoveConn = UserInputService.InputChanged:Connect(function(inp)
+        svConns[1] = UserInputService.InputChanged:Connect(function(inp)
             if inp.UserInputType == Enum.UserInputType.MouseMovement then
                 applyFromSVPos(inp.Position.X, inp.Position.Y)
             end
         end)
-        svEndConn = UserInputService.InputEnded:Connect(function(inp)
+        svConns[2] = UserInputService.InputEnded:Connect(function(inp)
             if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                svDragging = false
-                if svMoveConn then svMoveConn:Disconnect(); svMoveConn = nil end
-                if svEndConn  then svEndConn:Disconnect();  svEndConn  = nil end
+                stopSVDrag()
             end
         end)
     end)
 
-    -- drag no hue slider
-    local hueDragging = false
-    local hueMoveConn = nil
-    local hueEndConn  = nil
+    -- ── Drag no hue slider ────────────────────────────────────
+    local hueConns = {}
 
     local function applyFromHuePos(absY)
         local h2 = hueSlider.AbsoluteSize.Y
         if h2 == 0 then return end
-        local newHue = Util.Clamp(absY - hueSlider.AbsolutePosition.Y, 0, h2) / h2
-        applyHSV(newHue, sat, val, false)
+        local newH = Util.Clamp(absY - hueSlider.AbsolutePosition.Y, 0, h2) / h2
+        applyHSV(newH, sat, val, false)
+    end
+
+    local function stopHueDrag()
+        Util.DisconnectAll(hueConns)
     end
 
     local hueHit = Instance.new("TextButton")
@@ -1480,24 +1478,22 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
     hueHit.Parent = hueSlider
 
     hueHit.MouseButton1Down:Connect(function()
-        hueDragging = true
         applyFromHuePos(UserInputService:GetMouseLocation().Y)
+        Util.DisconnectAll(hueConns)
 
-        hueMoveConn = UserInputService.InputChanged:Connect(function(inp)
+        hueConns[1] = UserInputService.InputChanged:Connect(function(inp)
             if inp.UserInputType == Enum.UserInputType.MouseMovement then
                 applyFromHuePos(inp.Position.Y)
             end
         end)
-        hueEndConn = UserInputService.InputEnded:Connect(function(inp)
+        hueConns[2] = UserInputService.InputEnded:Connect(function(inp)
             if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                hueDragging = false
-                if hueMoveConn then hueMoveConn:Disconnect(); hueMoveConn = nil end
-                if hueEndConn  then hueEndConn:Disconnect();  hueEndConn  = nil end
+                stopHueDrag()
             end
         end)
     end)
 
-    -- Input hex
+    -- ── Input hex ─────────────────────────────────────────────
     hexBox.FocusLost:Connect(function()
         local raw = hexBox.Text:gsub("#",""):upper()
         if #raw == 6 then
@@ -1510,18 +1506,19 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
         end
     end)
 
+    -- ── Abrir/fechar painel ───────────────────────────────────
     local isOpen = false
 
     local function closePanel()
         if not isOpen then return end
         isOpen = false
-        Util.Tween(panel, Config.TweenFast, {Size = UDim2.new(0, panelW, 0, 0)})
+        if _openPickerClose == closePanel then _openPickerClose = nil end
+        Util.Tween(panel,         Config.TweenFast, {Size = UDim2.new(0, panelW, 0, 0)})
         Util.Tween(stroke,        Config.TweenFast, {Color = Theme.Border})
         Util.Tween(previewStroke, Config.TweenFast, {Color = Theme.PickerBorder})
         task.delay(Config.TweenFast.Time + 0.02, function()
             if not isOpen then panel.Visible = false end
         end)
-        _openPickerClose = nil
     end
 
     local function openPanel()
@@ -1530,7 +1527,7 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
         isOpen = true
         panel.Visible = true
         panel.Size = UDim2.new(0, panelW, 0, 0)
-        Util.Tween(panel, Config.TweenFast, {Size = UDim2.new(0, panelW, 0, totalPanelH)})
+        Util.Tween(panel,         Config.TweenFast, {Size = UDim2.new(0, panelW, 0, totalPanelH)})
         Util.Tween(stroke,        Config.TweenFast, {Color = Theme.Accent})
         Util.Tween(previewStroke, Config.TweenFast, {Color = Theme.Accent})
     end
@@ -1539,7 +1536,6 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
         if isOpen then closePanel() else openPanel() end
     end)
 
-    -- fecha ao clicar fora
     local outsideConn = UserInputService.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 and isOpen then
             task.defer(function()
@@ -1548,17 +1544,11 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
         end
     end)
 
-    -- cleanup de conexões de drag e fora ao sair da hierarquia
+    -- Limpeza completa ao remover da hierarquia
     wrap.AncestryChanged:Connect(function()
         if not wrap.Parent then
-            if svDragging then
-                if svMoveConn then svMoveConn:Disconnect(); svMoveConn = nil end
-                if svEndConn  then svEndConn:Disconnect();  svEndConn  = nil end
-            end
-            if hueDragging then
-                if hueMoveConn then hueMoveConn:Disconnect(); hueMoveConn = nil end
-                if hueEndConn  then hueEndConn:Disconnect();  hueEndConn  = nil end
-            end
+            stopSVDrag()
+            stopHueDrag()
             if isOpen then closePanel() end
             outsideConn:Disconnect()
         end
@@ -1568,10 +1558,13 @@ function Widgets.ColorPicker(scroll, text, default, order, cb)
     function obj:GetColor() return currentColor end
     function obj:SetColor(c, silent)
         local h2, s2, v2 = Util.Color3toHSV(c)
-        applyHSV(h2, s2, v2, false)
         if silent then
-            -- applyHSV já chama cb, então se silent, remova o efeito do cb
-            -- implementação: silencia na próxima chamada
+            -- Aplica sem disparar callback
+            local savedCb = cb; cb = nil
+            applyHSV(h2, s2, v2, false)
+            cb = savedCb
+        else
+            applyHSV(h2, s2, v2, false)
         end
     end
     function obj:SetText(t) nameLbl.Text = t or "" end
@@ -1613,14 +1606,13 @@ local function reshuffleNotify()
     for i = #_notifyStack, 1, -1 do
         local entry = _notifyStack[i]
         if entry and entry.card and entry.card.Parent then
-            local h       = Config.NotifyH
-            local targetY = vp.Y - cumY - h
+            local targetY = vp.Y - cumY - Config.NotifyH
             local targetX = vp.X - Config.NotifyW - Config.NotifyPadR
             Util.Tween(entry.card, Config.TweenMedium, {
                 Position = UDim2.new(0, targetX, 0, targetY)
             })
             entry.targetY = targetY
-            cumY = cumY + h + Config.NotifyGap
+            cumY = cumY + Config.NotifyH + Config.NotifyGap
         end
     end
 end
@@ -1635,15 +1627,13 @@ local function createNotify(title, body, duration, notifyType)
     local accentColor = typeData.color
     local iconChar    = typeData.icon
 
-    local w    = Config.NotifyW
-    local h    = Config.NotifyH
-    local padR = Config.NotifyPadR
-    local padB = Config.NotifyPadB
+    local w = Config.NotifyW
+    local h = Config.NotifyH
 
     local card = Instance.new("Frame")
     card.Name             = "NotifyCard"
     card.Size             = UDim2.new(0, w, 0, h)
-    card.Position         = UDim2.new(0, vp.X + w + 10, 0, vp.Y - padB - h)
+    card.Position         = UDim2.new(0, vp.X + w + 10, 0, vp.Y - Config.NotifyPadB - h)
     card.BackgroundColor3 = Theme.NotifyBg
     card.BorderSizePixel  = 0
     card.ClipsDescendants = true
@@ -1713,14 +1703,14 @@ local function createNotify(title, body, duration, notifyType)
         reshuffleNotify()
         local slideInfo = TweenInfo.new(Config.NotifySlideT, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
         Util.Tween(card, slideInfo, {
-            Position = UDim2.new(0, vp.X - w - padR, 0, entry.targetY or vp.Y - padB - h)
+            Position = UDim2.new(0, vp.X - w - Config.NotifyPadR, 0, entry.targetY or vp.Y - Config.NotifyPadB - h)
         })
     end)
 
     local dur = duration or Config.NotifyDur
-    local barInfo = TweenInfo.new(dur, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
     task.delay(Config.NotifySlideT * 0.6, function()
         if barFill.Parent then
+            local barInfo = TweenInfo.new(dur, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
             Util.Tween(barFill, barInfo, {Size = UDim2.new(0,0,1,0)})
         end
     end)
@@ -1733,7 +1723,6 @@ local function createNotify(title, body, duration, notifyType)
             if e == entry then table.remove(_notifyStack, i); break end
         end
         reshuffleNotify()
-
         local fadeI = TweenInfo.new(Config.NotifyFadeT, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
         Util.Tween(card, fadeI, {
             Position = UDim2.new(0, vp.X + 20, 0, card.Position.Y.Offset),
@@ -1768,7 +1757,7 @@ local function SwitchTab(win, newTab)
         })
         local prevCanvas = prev._Canvas
         fo.Completed:Connect(function()
-            if prevCanvas and prevCanvas.Parent then
+            if prevCanvas and prevCanvas.Parent and not (win._ActiveTab and win._ActiveTab._Canvas == prevCanvas) then
                 prevCanvas.Visible = false
             end
         end)
@@ -1788,23 +1777,18 @@ local function SwitchTab(win, newTab)
 end
 
 -- ════════════════════════════════════════════════
---  LIBRARY
+--  LIBRARY PRINCIPAL
 -- ════════════════════════════════════════════════
 local ModernNoir = {}
-ModernNoir._Version = "0.3.0"
+ModernNoir._Version = "0.3.1"
 ModernNoir._Windows = {}
 
 function ModernNoir:Notify(title, text, duration, notifyType)
     createNotify(title, text, duration, notifyType or "default")
 end
 
--- ════════════════════════════════════════════════
---  SET THEME  (troca cores em runtime)
--- ════════════════════════════════════════════════
--- Aplica apenas chaves presentes em newTheme.
--- Janelas existentes NÃO são recoloridas automaticamente
--- (widgets capturam as cores no momento da criação).
--- Use antes de criar janelas ou crie janelas após SetTheme.
+-- Troca cores do tema em runtime.
+-- Janelas existentes NÃO são recoloridas (widgets capturam na criação).
 function ModernNoir:SetTheme(newTheme)
     if type(newTheme) ~= "table" then return end
     for k, v in pairs(newTheme) do
@@ -1812,7 +1796,7 @@ function ModernNoir:SetTheme(newTheme)
             Theme[k] = v
         end
     end
-    -- atualiza NotifyTypes que referenciam Theme
+    -- Sincroniza NotifyTypes com o novo tema
     NotifyTypes.info.color    = Theme.NotifyInfo
     NotifyTypes.success.color = Theme.NotifySuccess
     NotifyTypes.warning.color = Theme.NotifyWarning
@@ -1820,6 +1804,9 @@ function ModernNoir:SetTheme(newTheme)
     NotifyTypes.default.color = Theme.Accent
 end
 
+-- ────────────────────────────────────────────────
+--  CREATE WINDOW
+-- ────────────────────────────────────────────────
 function ModernNoir.CreateWindow(opts)
     local title     = type(opts) == "string" and opts or (opts and opts.Title or "Modern Noir")
     local toggleKey = type(opts) == "table"  and opts.ToggleKey or nil
@@ -1845,6 +1832,8 @@ function ModernNoir.CreateWindow(opts)
     uiScale.Scale  = 1
     uiScale.Parent = mf
 
+    -- Ajuste de escala por viewport
+    local vpConn
     local function updateScale()
         local cam = workspace.CurrentCamera
         if not cam then return end
@@ -1852,9 +1841,9 @@ function ModernNoir.CreateWindow(opts)
         uiScale.Scale = math.min(vp.X / Config.WindowWidth, vp.Y / Config.WindowHeight, 1)
     end
     updateScale()
-    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+    vpConn = workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
 
-    -- Sombra
+    -- Sombra decorativa
     local sh = Instance.new("ImageLabel")
     sh.Size = UDim2.new(1,40,1,40); sh.Position = UDim2.new(0,-20,0,-10)
     sh.BackgroundTransparency = 1; sh.Image = "rbxassetid://6014261993"
@@ -1894,13 +1883,14 @@ function ModernNoir.CreateWindow(opts)
     local closeBtn    = Util.HeaderButton(hdr, UDim2.new(1,-18,0.5,0), Theme.CloseRed,  Theme.CloseRedHover, "×")
     local minimizeBtn = Util.HeaderButton(hdr, UDim2.new(1,-38,0.5,0), Theme.Accent,    Theme.AccentGlow,    "−")
 
-    -- ── Drag suave ───────────────────────────────────────────
+    -- ── Drag suave com Heartbeat ──────────────────────────────
     local dragging   = false
     local dragInput  = nil
     local dragStart  = nil
     local startPos   = nil
     local targetPos  = mf.Position
     local renderConn = nil
+    local inputChangedConn = nil
 
     local function updateDrag(inp)
         local delta = inp.Position - dragStart
@@ -1945,7 +1935,7 @@ function ModernNoir.CreateWindow(opts)
         end
     end)
 
-    local uiChangedConn = UserInputService.InputChanged:Connect(function(i)
+    inputChangedConn = UserInputService.InputChanged:Connect(function(i)
         if dragging and i == dragInput then updateDrag(i) end
     end)
 
@@ -1961,7 +1951,7 @@ function ModernNoir.CreateWindow(opts)
     sdiv.Size = UDim2.new(0,1,1,0); sdiv.Position = UDim2.new(1,0,0,0)
     sdiv.BackgroundColor3 = Theme.Border; sdiv.BorderSizePixel = 0; sdiv.Parent = sb
 
-    -- ── Search bar na sidebar ─────────────────────────────────
+    -- Search bar
     local searchFrame = Instance.new("Frame")
     searchFrame.Size = UDim2.new(1,-8,0,Config.SearchH)
     searchFrame.Position = UDim2.new(0,4,0,6)
@@ -1999,7 +1989,6 @@ function ModernNoir.CreateWindow(opts)
         end
     end)
 
-    -- offset da sidebar scroll para dar espaço ao search
     local sidebarTopOffset = Config.SearchH + 12
 
     local sbScroll = Instance.new("ScrollingFrame")
@@ -2050,7 +2039,7 @@ function ModernNoir.CreateWindow(opts)
     TweenService:Create(uiScale, Config.TweenMedium, {Scale = targetScale}):Play()
     TweenService:Create(mf,      Config.TweenMedium, {BackgroundTransparency = 0}):Play()
 
-    -- ── Toggle global por tecla ───────────────────────────────
+    -- Toggle de visibilidade por tecla
     local visible    = true
     local toggleConn = nil
 
@@ -2064,19 +2053,44 @@ function ModernNoir.CreateWindow(opts)
         end)
     end
 
+    -- ── Registro de abas para filtro de search ────────────────
+    -- OTIMIZAÇÃO: 1 única conexão no searchBox, centralizada na window
+    local _tabRegistry = {}  -- {button = tbtn, name = name}
+
+    local searchConn = searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+        local query = searchBox.Text:lower()
+        for _, entry in ipairs(_tabRegistry) do
+            if query == "" then
+                entry.button.Visible = true
+            else
+                entry.button.Visible = entry.name:lower():find(query, 1, true) ~= nil
+            end
+        end
+    end)
+
     -- ── Destroy centralizado ──────────────────────────────────
     local destroyed = false
     local function doDestroy()
         if destroyed then return end
         destroyed = true
 
-        uiChangedConn:Disconnect()
-        if renderConn then renderConn:Disconnect(); renderConn = nil end
-        if toggleConn then toggleConn:Disconnect(); toggleConn = nil end
+        -- Desconecta todas as conexões da window
+        inputChangedConn:Disconnect()
+        searchConn:Disconnect()
+        vpConn:Disconnect()
+        if renderConn  then renderConn:Disconnect();  renderConn  = nil end
+        if toggleConn  then toggleConn:Disconnect();  toggleConn  = nil end
 
+        -- Fecha dropdowns/pickers abertos pertencentes a esta window
+        if _openDropdownClose then _openDropdownClose(); _openDropdownClose = nil end
+        if _openPickerClose   then _openPickerClose();   _openPickerClose   = nil end
+
+        -- Remove da lista global
         for i, w in ipairs(ModernNoir._Windows) do
             if w == Window then table.remove(ModernNoir._Windows, i); break end
         end
+
+        table.clear(_tabRegistry)
 
         Util.Tween(mf, Config.TweenFast, {BackgroundTransparency = 1})
         task.delay(Config.TweenFast.Time + 0.05, function()
@@ -2086,6 +2100,7 @@ function ModernNoir.CreateWindow(opts)
 
     closeBtn.MouseButton1Click:Connect(doDestroy)
 
+    -- Minimize/restore
     local minimized = false
     minimizeBtn.MouseButton1Click:Connect(function()
         minimized = not minimized
@@ -2100,7 +2115,7 @@ function ModernNoir.CreateWindow(opts)
         end
     end)
 
-    -- ── Window ────────────────────────────────────────────────
+    -- ── Window API pública ────────────────────────────────────
     local Window = {}
     Window.Frame      = mf
     Window.Sidebar    = sb
@@ -2168,15 +2183,8 @@ function ModernNoir.CreateWindow(opts)
             Util.Tween(tlbl, Config.TweenFast, {TextColor3 = Theme.TextSecondary})
         end)
 
-        -- conecta search ao tbtn: filtra por nome da tab
-        searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-            local query = searchBox.Text:lower()
-            if query == "" then
-                tbtn.Visible = true
-            else
-                tbtn.Visible = name:lower():find(query, 1, true) ~= nil
-            end
-        end)
+        -- OTIMIZAÇÃO: registra aba no _tabRegistry para ser filtrada pela conexão central
+        table.insert(_tabRegistry, {button = tbtn, name = name})
 
         local canvas = Instance.new("CanvasGroup")
         canvas.Size = UDim2.new(1,0,1,0)
@@ -2230,6 +2238,7 @@ function ModernNoir.CreateWindow(opts)
             SwitchTab(self, Tab)
         end)
 
+        -- Métodos de adição de widgets
         function Tab:AddButton(ltext, lcb)
             self._Count += 1
             return Widgets.Button(self.ScrollFrame, ltext, self._Count, lcb)
@@ -2277,6 +2286,7 @@ function ModernNoir.CreateWindow(opts)
 
         table.insert(self._Tabs, Tab)
 
+        -- Seleciona automaticamente a primeira aba criada
         if #self._Tabs == 1 then
             task.delay(Config.TweenMedium.Time, function()
                 SwitchTab(self, Tab)
