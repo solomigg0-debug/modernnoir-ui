@@ -8,12 +8,11 @@ local RunService       = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- FIX [10]: usa gethui() em executor, fallback CoreGui, fallback PlayerGui
 local function getContainer()
     if gethui then return gethui() end
     local ok, cg = pcall(game.GetService, game, "CoreGui")
     if ok and cg then return cg end
-    return LocalPlayer:WaitForChild("PlayerGui")
+    return LocalPlayer:WaitForChild("PlayerGui", 10) or error("ModernNoir: container not found")
 end
 local GuiParent = getContainer()
 
@@ -106,6 +105,30 @@ local Config = {
 -- ════════════════════════════════════════════════
 local Util = {}
 
+-- FIX: _activeTweens para cancelar tweens anteriores no mesmo objeto
+local _activeTweens = {}
+
+function Util.Tween(obj, info, props)
+    local key = tostring(obj)
+    if _activeTweens[key] then
+        _activeTweens[key]:Cancel()
+    end
+    local t = TweenService:Create(obj, info, props)
+    _activeTweens[key] = t
+    t:Play()
+    t.Completed:Connect(function()
+        if _activeTweens[key] == t then
+            _activeTweens[key] = nil
+        end
+    end)
+    return t
+end
+
+-- FIX: clamp dentro de Util por consistência
+function Util.Clamp(v, lo, hi)
+    return math.max(lo, math.min(hi, v))
+end
+
 function Util.Corner(obj, r)
     local c = Instance.new("UICorner")
     c.CornerRadius = r or Config.Corner
@@ -120,16 +143,6 @@ function Util.Stroke(obj, color, thickness)
     s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     s.Parent = obj
     return s
-end
-
-function Util.Tween(obj, info, props)
-    local t = TweenService:Create(obj, info, props)
-    t:Play()
-    return t
-end
-
-local function clamp(v, lo, hi)
-    return math.max(lo, math.min(hi, v))
 end
 
 function Util.HeaderButton(parent, pos, colNorm, colHover, sym)
@@ -287,47 +300,50 @@ function Widgets.Toggle(scroll, text, default, order, cb)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.ZIndex = 2; lbl.Parent = f
 
-    local tw, th = Config.ToggleW, Config.ToggleH
+    local toggleWidth  = Config.ToggleW
+    local toggleHeight = Config.ToggleH
+
     local track = Instance.new("Frame")
-    track.Size = UDim2.new(0,tw,0,th)
-    track.Position = UDim2.new(1,-(tw+10), 0.5, -th/2)
+    track.Size = UDim2.new(0, toggleWidth, 0, toggleHeight)
+    track.Position = UDim2.new(1, -(toggleWidth + 10), 0.5, -toggleHeight / 2)
     track.BackgroundColor3 = state and Theme.Accent or Theme.ToggleOffTrack
     track.BorderSizePixel = 0; track.ZIndex = 3; track.Parent = f
     Util.Corner(track, UDim.new(1,0))
     local trackStroke = Util.Stroke(track, Theme.Accent, Config.WidgetBorderW)
     trackStroke.Transparency = state and 0 or 1
 
-    local ks = Config.KnobSize; local kp = Config.KnobPad
-    local kOffX = kp
-    local kOnX  = tw - ks - kp
+    local knobSize = Config.KnobSize
+    local knobPad  = Config.KnobPad
+    local knobOffX = knobPad
+    local knobOnX  = toggleWidth - knobSize - knobPad
 
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0,ks,0,ks)
-    knob.Position = UDim2.new(0, state and kOnX or kOffX, 0.5, -ks/2)
+    knob.Size = UDim2.new(0, knobSize, 0, knobSize)
+    knob.Position = UDim2.new(0, state and knobOnX or knobOffX, 0.5, -knobSize / 2)
     knob.BackgroundColor3 = state and Theme.ToggleKnobOn or Theme.ToggleKnob
     knob.BorderSizePixel = 0; knob.ZIndex = 5; knob.Parent = track
     Util.Corner(knob, UDim.new(1,0))
 
     local function apply(s, animate)
-        local tp = animate and Config.ToggleMoveT  or TweenInfo.new(0)
-        local tc = animate and Config.ToggleColorT or TweenInfo.new(0)
+        local tweenMove  = animate and Config.ToggleMoveT  or TweenInfo.new(0)
+        local tweenColor = animate and Config.ToggleColorT or TweenInfo.new(0)
         if s then
-            Util.Tween(track,       tc, {BackgroundColor3 = Theme.Accent})
-            Util.Tween(trackStroke, tc, {Transparency = 0})
-            Util.Tween(knob, tp, {
-                Position         = UDim2.new(0, kOnX, 0.5, -ks/2),
+            Util.Tween(track,       tweenColor, {BackgroundColor3 = Theme.Accent})
+            Util.Tween(trackStroke, tweenColor, {Transparency = 0})
+            Util.Tween(knob, tweenMove, {
+                Position         = UDim2.new(0, knobOnX, 0.5, -knobSize / 2),
                 BackgroundColor3 = Theme.ToggleKnobOn,
             })
-            Util.Tween(sico, tc, {TextColor3 = Theme.Accent})
+            Util.Tween(sico, tweenColor, {TextColor3 = Theme.Accent})
             sico.Text = "●"
         else
-            Util.Tween(track,       tc, {BackgroundColor3 = Theme.ToggleOffTrack})
-            Util.Tween(trackStroke, tc, {Transparency = 1})
-            Util.Tween(knob, tp, {
-                Position         = UDim2.new(0, kOffX, 0.5, -ks/2),
+            Util.Tween(track,       tweenColor, {BackgroundColor3 = Theme.ToggleOffTrack})
+            Util.Tween(trackStroke, tweenColor, {Transparency = 1})
+            Util.Tween(knob, tweenMove, {
+                Position         = UDim2.new(0, knobOffX, 0.5, -knobSize / 2),
                 BackgroundColor3 = Theme.ToggleKnob,
             })
-            Util.Tween(sico, tc, {TextColor3 = Theme.TextDisabled})
+            Util.Tween(sico, tweenColor, {TextColor3 = Theme.TextDisabled})
             sico.Text = "○"
         end
     end
@@ -337,10 +353,9 @@ function Widgets.Toggle(scroll, text, default, order, cb)
     hit.Size = UDim2.new(1,0,1,0); hit.BackgroundTransparency = 1
     hit.Text = ""; hit.ZIndex = 6; hit.AutoButtonColor = false; hit.Parent = f
 
+    -- FIX: hover consistente em ambos os estados
     hit.MouseEnter:Connect(function()
-        if not state then
-            Util.Tween(f, Config.TweenFast, {BackgroundColor3 = Theme.WidgetBgHover})
-        end
+        Util.Tween(f, Config.TweenFast, {BackgroundColor3 = Theme.WidgetBgHover})
     end)
     hit.MouseLeave:Connect(function()
         Util.Tween(f, Config.TweenFast, {BackgroundColor3 = Theme.WidgetBg})
@@ -367,7 +382,7 @@ end
 function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     minV    = minV or 0
     maxV    = maxV or 100
-    default = clamp(default or minV, minV, maxV)
+    default = Util.Clamp(default or minV, minV, maxV)
     local value = default
 
     local wrap = Instance.new("Frame")
@@ -415,9 +430,10 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     valLbl.TextXAlignment = Enum.TextXAlignment.Center
     valLbl.ZIndex = 3; valLbl.Parent = badge
 
-    local trackH = Config.SliderTrackH
+    local trackHeight = Config.SliderTrackH
+
     local track = Instance.new("Frame")
-    track.Size = UDim2.new(1,0,0,trackH)
+    track.Size = UDim2.new(1,0,0,trackHeight)
     track.Position = UDim2.new(0,0,0,20)
     track.BackgroundColor3 = Theme.SliderTrack
     track.BorderSizePixel = 0; track.ZIndex = 2; track.Parent = f
@@ -429,10 +445,11 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     fill.BorderSizePixel = 0; fill.ZIndex = 3; fill.Parent = track
     Util.Corner(fill, UDim.new(1,0))
 
-    local ks = Config.SliderKnobS
+    local knobSize = Config.SliderKnobS
+
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0,ks,0,ks)
-    knob.AnchorPoint = Vector2.new(0.5,0.5)
+    knob.Size = UDim2.new(0, knobSize, 0, knobSize)
+    knob.AnchorPoint = Vector2.new(0.5, 0.5)
     knob.Position = UDim2.new(0,0,0.5,0)
     knob.BackgroundColor3 = Theme.SliderKnob
     knob.BorderSizePixel = 0; knob.ZIndex = 5; knob.Parent = track
@@ -458,38 +475,51 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     maxLbl.ZIndex = 2; maxLbl.Parent = f
 
     local function applyValue(v)
-        value = clamp(v, minV, maxV)
-        local r = (value - minV) / (maxV - minV)
-        fill.Size     = UDim2.new(r, 0, 1, 0)
-        knob.Position = UDim2.new(r, 0, 0.5, 0)
+        value = Util.Clamp(v, minV, maxV)
+        local ratio = (value - minV) / (maxV - minV)
+        fill.Size     = UDim2.new(ratio, 0, 1, 0)
+        knob.Position = UDim2.new(ratio, 0, 0.5, 0)
         valLbl.Text   = tostring(math.round(value))
     end
     applyValue(value)
 
     local hitbox = Instance.new("TextButton")
-    hitbox.Size = UDim2.new(1,0,0,trackH + 20)
+    hitbox.Size = UDim2.new(1,0,0, trackHeight + 20)
     hitbox.Position = UDim2.new(0,0,0,10)
     hitbox.BackgroundTransparency = 1; hitbox.Text = ""
     hitbox.ZIndex = 7; hitbox.AutoButtonColor = false; hitbox.Parent = f
 
-    local dragging   = false
-    local moveConn   = nil
-    local endedConn  = nil
+    local dragging  = false
+    local moveConn  = nil
+    local endedConn = nil
 
     local isInt = (math.floor(minV) == minV) and (math.floor(maxV) == maxV)
 
     local function applyFromX(absX)
-        local tw2  = track.AbsoluteSize.X
-        if tw2 == 0 then return end
-        local relX = clamp(absX - track.AbsolutePosition.X, 0, tw2)
-        local v = minV + (relX / tw2) * (maxV - minV)
+        local trackWidth = track.AbsoluteSize.X
+        if trackWidth == 0 then return end
+        local relX = Util.Clamp(absX - track.AbsolutePosition.X, 0, trackWidth)
+        local v = minV + (relX / trackWidth) * (maxV - minV)
         v = isInt and math.round(v) or (math.floor(v * 100 + 0.5) / 100)
-        v = clamp(v, minV, maxV)
+        v = Util.Clamp(v, minV, maxV)
         if v ~= value then
             applyValue(v)
             if cb then pcall(cb, value) end
         end
     end
+
+    -- FIX: cleanup das conexões se widget for destruído durante drag
+    local function cleanupDrag()
+        dragging = false
+        if moveConn  then moveConn:Disconnect();  moveConn  = nil end
+        if endedConn then endedConn:Disconnect(); endedConn = nil end
+    end
+
+    wrap.AncestryChanged:Connect(function()
+        if not wrap.Parent then
+            cleanupDrag()
+        end
+    end)
 
     hitbox.MouseEnter:Connect(function()
         Util.Tween(f, Config.TweenFast, {BackgroundColor3 = Theme.WidgetBgHover})
@@ -514,9 +544,7 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
 
         endedConn = UserInputService.InputEnded:Connect(function(inp)
             if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = false
-                if moveConn  then moveConn:Disconnect();  moveConn  = nil end
-                if endedConn then endedConn:Disconnect(); endedConn = nil end
+                cleanupDrag()
                 Util.Tween(knob,       Config.TweenFast, {BackgroundColor3 = Theme.SliderKnob})
                 Util.Tween(knobStroke, Config.TweenFast, {Color = Theme.Accent, Thickness = 1.5})
                 Util.Tween(f,          Config.TweenFast, {BackgroundColor3 = Theme.WidgetBg})
@@ -546,14 +574,17 @@ local function getNotifyGui()
     ng.Name = "ModernNoir_Notify"; ng.ResetOnSpawn = false
     ng.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     ng.DisplayOrder = 200
-    ng.IgnoreGuiInset = false  -- FIX [11]
-    ng.Parent = GuiParent      -- FIX [10]
+    ng.IgnoreGuiInset = false
+    ng.Parent = GuiParent
     _notifyGui = ng
     return ng
 end
 
 local function reshuffleNotify()
-    local vp   = workspace.CurrentCamera.ViewportSize
+    -- FIX: verificação de CurrentCamera antes de acessar ViewportSize
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local vp  = cam.ViewportSize
     local cumY = Config.NotifyPadB
 
     for i = #_notifyStack, 1, -1 do
@@ -572,22 +603,26 @@ local function reshuffleNotify()
 end
 
 local function createNotify(title, body, duration)
-    local ng   = getNotifyGui()
-    local vp   = workspace.CurrentCamera.ViewportSize
+    local ng  = getNotifyGui()
+    -- FIX: verificação de CurrentCamera
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local vp  = cam.ViewportSize
+
     local w    = Config.NotifyW
     local h    = Config.NotifyH
     local padR = Config.NotifyPadR
     local padB = Config.NotifyPadB
 
     local card = Instance.new("Frame")
-    card.Name            = "NotifyCard"
-    card.Size            = UDim2.new(0, w, 0, h)
-    card.Position        = UDim2.new(0, vp.X + w + 10, 0, vp.Y - padB - h)
-    card.BackgroundColor3= Theme.NotifyBg
-    card.BorderSizePixel = 0
-    card.ClipsDescendants= true
-    card.ZIndex          = 10
-    card.Parent          = ng
+    card.Name             = "NotifyCard"
+    card.Size             = UDim2.new(0, w, 0, h)
+    card.Position         = UDim2.new(0, vp.X + w + 10, 0, vp.Y - padB - h)
+    card.BackgroundColor3 = Theme.NotifyBg
+    card.BorderSizePixel  = 0
+    card.ClipsDescendants = true
+    card.ZIndex           = 10
+    card.Parent           = ng
     Util.Corner(card, UDim.new(0,8))
     Util.Stroke(card, Theme.Border, 1)
 
@@ -623,7 +658,7 @@ local function createNotify(title, body, duration)
 
     local barBg = Instance.new("Frame")
     barBg.Size = UDim2.new(1,0,0,Config.NotifyBarH)
-    barBg.Position = UDim2.new(0,0,0,h - Config.NotifyBarH)
+    barBg.Position = UDim2.new(0,0,0, h - Config.NotifyBarH)
     barBg.BackgroundColor3 = Theme.NotifyBarBg; barBg.BorderSizePixel = 0
     barBg.ZIndex = 11; barBg.Parent = card
 
@@ -637,6 +672,7 @@ local function createNotify(title, body, duration)
     closeX.BackgroundTransparency = 1; closeX.Text = "×"
     closeX.Font = Enum.Font.GothamBold; closeX.TextSize = 13
     closeX.TextColor3 = Theme.TextDisabled; closeX.ZIndex = 13; closeX.Parent = card
+
     closeX.MouseEnter:Connect(function()
         Util.Tween(closeX, Config.TweenFast, {TextColor3 = Theme.CloseRedHover})
     end)
@@ -665,7 +701,8 @@ local function createNotify(title, body, duration)
 
     local gone = false
     local function dismiss()
-        if gone then return end; gone = true
+        if gone then return end
+        gone = true
         for i, e in ipairs(_notifyStack) do
             if e == entry then table.remove(_notifyStack, i); break end
         end
@@ -703,9 +740,11 @@ local function SwitchTab(win, newTab)
             Size = UDim2.new(0, Config.TabIndW, 1, -10),
             BackgroundTransparency = 0.5,
         })
+        -- FIX: guarda referência local antes do Completed disparar
+        local prevCanvas = prev._Canvas
         fo.Completed:Connect(function()
-            if prev._Canvas and prev._Canvas.Parent then
-                prev._Canvas.Visible = false
+            if prevCanvas and prevCanvas.Parent then
+                prevCanvas.Visible = false
             end
         end)
     end
@@ -727,7 +766,7 @@ end
 --  LIBRARY
 -- ════════════════════════════════════════════════
 local ModernNoir = {}
-ModernNoir._Version = "4.3.0"
+ModernNoir._Version = "0.1.0"
 ModernNoir._Windows = {}
 
 function ModernNoir:Notify(title, text, duration)
@@ -737,28 +776,30 @@ end
 function ModernNoir.CreateWindow(title)
 
     local sg = Instance.new("ScreenGui")
-    sg.Name = "ModernNoir_"..(title or "Window")
-    sg.ResetOnSpawn = false; sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.Name = "ModernNoir_" .. (title or "Window")
+    sg.ResetOnSpawn = false
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     sg.DisplayOrder = 100
-    sg.IgnoreGuiInset = false  -- FIX [11]: false com gethui
-    sg.Parent = GuiParent      -- FIX [10]: GuiParent em vez de PlayerGui
+    sg.IgnoreGuiInset = false
+    sg.Parent = GuiParent
 
     local mf = Instance.new("Frame")
     mf.Name = "MainFrame"
     mf.Size = UDim2.new(0, Config.WindowWidth, 0, Config.WindowHeight)
-    -- FIX [12]: AnchorPoint + Position centrado, independente de resolução
     mf.AnchorPoint = Vector2.new(0.5, 0.5)
     mf.Position    = UDim2.new(0.5, 0, 0.5, 0)
     mf.BackgroundColor3 = Theme.Background; mf.BorderSizePixel = 0
     mf.ClipsDescendants = true; mf.Parent = sg
     Util.Corner(mf); Util.Stroke(mf, Theme.Border, Config.BorderW)
 
-    -- FIX [13]: UIScale responsivo ao viewport
     local uiScale = Instance.new("UIScale")
+    uiScale.Scale  = 1
     uiScale.Parent = mf
 
     local function updateScale()
-        local vp = workspace.CurrentCamera.ViewportSize
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+        local vp = cam.ViewportSize
         uiScale.Scale = math.min(vp.X / Config.WindowWidth, vp.Y / Config.WindowHeight, 1)
     end
     updateScale()
@@ -801,56 +842,76 @@ function ModernNoir.CreateWindow(title)
     htitle.TextXAlignment = Enum.TextXAlignment.Left
     htitle.ZIndex = 5; htitle.Parent = hdr
 
-    local closeBtn    = Util.HeaderButton(hdr, UDim2.new(1,-18,0.5,0), Theme.CloseRed,     Theme.CloseRedHover, "×")
-    local minimizeBtn = Util.HeaderButton(hdr, UDim2.new(1,-38,0.5,0), Theme.Accent,        Theme.AccentGlow,    "−")
+    local closeBtn    = Util.HeaderButton(hdr, UDim2.new(1,-18,0.5,0), Theme.CloseRed,  Theme.CloseRedHover, "×")
+    local minimizeBtn = Util.HeaderButton(hdr, UDim2.new(1,-38,0.5,0), Theme.Accent,    Theme.AccentGlow,    "−")
 
     -- ── Drag suave ───────────────────────────────────────────
-    -- FIX [14]: drag corrigido para AnchorPoint 0.5,0.5
-    local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
-    local targetPos = mf.Position  -- UDim2.new(0.5, 0, 0.5, 0)
+    local dragging  = false
+    local dragInput = nil
+    local dragStart = nil
+    local startPos  = nil
+    local targetPos = mf.Position
 
     local function updateDrag(inp)
-        local d  = inp.Position - dragStart
-        local vp = workspace.CurrentCamera.ViewportSize
-        local hw = (Config.WindowWidth  * uiScale.Scale) / 2
-        local hh = (Config.WindowHeight * uiScale.Scale) / 2
-        local newX = clamp(startPos.X.Offset + d.X, hw - vp.X/2,        vp.X/2 - hw)
-        local newY = clamp(startPos.Y.Offset + d.Y, hh - vp.Y/2,        vp.Y/2 - hh)
-        targetPos = UDim2.new(0.5, newX, 0.5, newY)
+        local delta = inp.Position - dragStart
+        local cam   = workspace.CurrentCamera
+        if not cam then return end
+        local vp = cam.ViewportSize
+        local halfW = (Config.WindowWidth  * uiScale.Scale) / 2
+        local halfH = (Config.WindowHeight * uiScale.Scale) / 2
+        local newX  = Util.Clamp(startPos.X.Offset + delta.X, halfW - vp.X/2, vp.X/2 - halfW)
+        local newY  = Util.Clamp(startPos.Y.Offset + delta.Y, halfH - vp.Y/2, vp.Y/2 - halfH)
+        targetPos   = UDim2.new(0.5, newX, 0.5, newY)
     end
+
+    -- FIX: renderConn só existe durante o drag, não eternamente
+    local renderConn = nil
 
     hdr.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1
             or i.UserInputType == Enum.UserInputType.Touch then
-            dragging = true; dragStart = i.Position; startPos = mf.Position
+            dragging  = true
+            dragStart = i.Position
+            startPos  = mf.Position
+
+            -- FIX: Heartbeat com delta time para lerp frame-rate independent
+            renderConn = RunService.Heartbeat:Connect(function(dt)
+                local alpha = 1 - math.pow(1 - Config.DragSmooth, dt * 60)
+                local c     = mf.Position
+                local nx    = c.X.Offset + (targetPos.X.Offset - c.X.Offset) * alpha
+                local ny    = c.Y.Offset + (targetPos.Y.Offset - c.Y.Offset) * alpha
+                mf.Position = UDim2.new(0.5, nx, 0.5, ny)
+            end)
+
             i.Changed:Connect(function()
-                if i.UserInputState == Enum.UserInputState.End then dragging = false end
+                if i.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    if renderConn then
+                        renderConn:Disconnect()
+                        renderConn = nil
+                    end
+                end
             end)
         end
     end)
+
     hdr.InputChanged:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseMovement
             or i.UserInputType == Enum.UserInputType.Touch then
             dragInput = i
         end
     end)
+
+    -- FIX: uiChangedConn guardado junto com as outras conexões para cleanup centralizado
     local uiChangedConn = UserInputService.InputChanged:Connect(function(i)
         if dragging and i == dragInput then updateDrag(i) end
-    end)
-
-    -- FIX [1]: RenderStepped guardado para desconectar no Destroy
-    local renderConn = RunService.RenderStepped:Connect(function()
-        local c = mf.Position; local a = Config.DragSmooth
-        mf.Position = UDim2.new(
-            0.5, c.X.Offset + (targetPos.X.Offset - c.X.Offset) * (1 - a),
-            0.5, c.Y.Offset + (targetPos.Y.Offset - c.Y.Offset) * (1 - a))
     end)
 
     -- ── Sidebar ───────────────────────────────────────────────
     local sb = Instance.new("Frame")
     sb.Name = "Sidebar"
-    sb.Size = UDim2.new(0, Config.SidebarWidth, 1, -(Config.HeaderHeight+1))
-    sb.Position = UDim2.new(0,0,0,Config.HeaderHeight+1)
+    sb.Size = UDim2.new(0, Config.SidebarWidth, 1, -(Config.HeaderHeight + 1))
+    sb.Position = UDim2.new(0, 0, 0, Config.HeaderHeight + 1)
     sb.BackgroundColor3 = Theme.Surface; sb.BorderSizePixel = 0
     sb.ClipsDescendants = true; sb.Parent = mf
 
@@ -873,8 +934,8 @@ function ModernNoir.CreateWindow(title)
     tList.Padding = UDim.new(0,3); tList.Parent = sbScroll
 
     local sPad = Instance.new("UIPadding")
-    sPad.PaddingTop = UDim.new(0,10); sPad.PaddingLeft = UDim.new(0,0)
-    sPad.PaddingRight = UDim.new(0,6); sPad.Parent = sbScroll
+    sPad.PaddingTop   = UDim.new(0,10); sPad.PaddingLeft  = UDim.new(0,0)
+    sPad.PaddingRight = UDim.new(0,6);  sPad.Parent = sbScroll
 
     local brandFrame = Instance.new("Frame")
     brandFrame.Size = UDim2.new(1,-1,0,28); brandFrame.Position = UDim2.new(0,0,1,-28)
@@ -884,7 +945,7 @@ function ModernNoir.CreateWindow(title)
     local brand = Instance.new("TextLabel")
     brand.Size = UDim2.new(1,0,1,0)
     brand.BackgroundTransparency = 1
-    brand.Text = "◈ v"..ModernNoir._Version
+    brand.Text = "◈ v" .. ModernNoir._Version
     brand.Font = Enum.Font.Gotham; brand.TextSize = 9
     brand.TextColor3 = Theme.AccentDim
     brand.TextXAlignment = Enum.TextXAlignment.Center
@@ -893,27 +954,38 @@ function ModernNoir.CreateWindow(title)
     -- ── Content ───────────────────────────────────────────────
     local cf = Instance.new("Frame")
     cf.Name = "Content"
-    cf.Size = UDim2.new(1,-Config.SidebarWidth, 1, -(Config.HeaderHeight+1))
-    cf.Position = UDim2.new(0,Config.SidebarWidth, 0, Config.HeaderHeight+1)
+    cf.Size = UDim2.new(1, -Config.SidebarWidth, 1, -(Config.HeaderHeight + 1))
+    cf.Position = UDim2.new(0, Config.SidebarWidth, 0, Config.HeaderHeight + 1)
     cf.BackgroundColor3 = Theme.Background; cf.BorderSizePixel = 0
     cf.ClipsDescendants = true; cf.Parent = mf
 
-    -- Animação de entrada
+    -- animação de entrada via UIScale em vez de Size (não conflita com o sistema de responsividade)
+    -- guarda o scale alvo calculado por updateScale() antes de sobrescrever
+    local targetScale = uiScale.Scale
+    uiScale.Scale = 0.88
     mf.BackgroundTransparency = 1
-    mf.Size = UDim2.new(0,Config.WindowWidth,0,Config.WindowHeight * 0.92)
-    TweenService:Create(mf, Config.TweenMedium, {
-        BackgroundTransparency = 0,
-        Size = UDim2.new(0,Config.WindowWidth,0,Config.WindowHeight)
-    }):Play()
+    TweenService:Create(uiScale, Config.TweenMedium, {Scale = targetScale}):Play()
+    TweenService:Create(mf,      Config.TweenMedium, {BackgroundTransparency = 0}):Play()
 
-    -- Destroy e conexões
+    -- ── Destroy centralizado ──────────────────────────────────
     local destroyed = false
     local function doDestroy()
-        if destroyed then return end; destroyed = true
-        renderConn:Disconnect()
+        if destroyed then return end
+        destroyed = true
+
+        -- FIX: todas as conexões globais desconectadas aqui
         uiChangedConn:Disconnect()
-        Util.Tween(mf, Config.TweenFast, {BackgroundTransparency=1})
-        task.delay(Config.TweenFast.Time + 0.05, function() sg:Destroy() end)
+        if renderConn then renderConn:Disconnect(); renderConn = nil end
+
+        -- FIX: remove da lista _Windows
+        for i, w in ipairs(ModernNoir._Windows) do
+            if w == Window then table.remove(ModernNoir._Windows, i); break end
+        end
+
+        Util.Tween(mf, Config.TweenFast, {BackgroundTransparency = 1})
+        task.delay(Config.TweenFast.Time + 0.05, function()
+            if sg.Parent then sg:Destroy() end
+        end)
     end
 
     closeBtn.MouseButton1Click:Connect(doDestroy)
@@ -922,13 +994,13 @@ function ModernNoir.CreateWindow(title)
     minimizeBtn.MouseButton1Click:Connect(function()
         minimized = not minimized
         if minimized then
-            TweenService:Create(mf, Config.TweenMedium, {Size=UDim2.new(0,Config.WindowWidth,0,Config.MinimizeH)}):Play()
-            TweenService:Create(sb, Config.TweenFast,   {BackgroundTransparency=1}):Play()
-            TweenService:Create(cf, Config.TweenFast,   {BackgroundTransparency=1}):Play()
+            TweenService:Create(mf, Config.TweenMedium, {Size = UDim2.new(0, Config.WindowWidth, 0, Config.MinimizeH)}):Play()
+            TweenService:Create(sb, Config.TweenFast,   {BackgroundTransparency = 1}):Play()
+            TweenService:Create(cf, Config.TweenFast,   {BackgroundTransparency = 1}):Play()
         else
-            TweenService:Create(mf, Config.TweenMedium, {Size=UDim2.new(0,Config.WindowWidth,0,Config.WindowHeight)}):Play()
-            TweenService:Create(sb, Config.TweenMedium, {BackgroundTransparency=0}):Play()
-            TweenService:Create(cf, Config.TweenMedium, {BackgroundTransparency=0}):Play()
+            TweenService:Create(mf, Config.TweenMedium, {Size = UDim2.new(0, Config.WindowWidth, 0, Config.WindowHeight)}):Play()
+            TweenService:Create(sb, Config.TweenMedium, {BackgroundTransparency = 0}):Play()
+            TweenService:Create(cf, Config.TweenMedium, {BackgroundTransparency = 0}):Play()
         end
     end)
 
@@ -965,8 +1037,11 @@ function ModernNoir.CreateWindow(title)
         local tIco = Instance.new("ImageLabel")
         tIco.Size = UDim2.new(0,14,0,14); tIco.Position = UDim2.new(0,14,0.5,-7)
         tIco.BackgroundTransparency = 1; tIco.ZIndex = 3
-        if iconID and iconID ~= "" then
-            tIco.Image = "rbxassetid://"..tostring(iconID)
+
+        -- FIX: validação mais robusta de iconID
+        local iconIDValid = iconID and tostring(iconID) ~= "" and tostring(iconID) ~= "0"
+        if iconIDValid then
+            tIco.Image = "rbxassetid://" .. tostring(iconID)
             tIco.ImageColor3 = Theme.TextSecondary
         else
             tIco.Image = ""
@@ -1014,8 +1089,8 @@ function ModernNoir.CreateWindow(title)
         scrl.ZIndex = 3; scrl.Parent = canvas
 
         local sp = Instance.new("UIPadding")
-        sp.PaddingTop = UDim.new(0,8); sp.PaddingBottom = UDim.new(0,12)
-        sp.PaddingLeft = UDim.new(0,10); sp.PaddingRight = UDim.new(0,14)
+        sp.PaddingTop    = UDim.new(0,8);  sp.PaddingBottom = UDim.new(0,12)
+        sp.PaddingLeft   = UDim.new(0,10); sp.PaddingRight  = UDim.new(0,14)
         sp.Parent = scrl
 
         local wList = Instance.new("UIListLayout")
@@ -1074,6 +1149,7 @@ function ModernNoir.CreateWindow(title)
         return Tab
     end
 
+    -- FIX: insere na lista depois que Window está definido
     table.insert(ModernNoir._Windows, Window)
     return Window
 end
