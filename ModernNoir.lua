@@ -159,9 +159,361 @@ function Util.HeaderButton(parent, pos, colNorm, colHover, sym)
 end
 
 -- ════════════════════════════════════════════════
+--  KEYBIND SYSTEM
+-- ════════════════════════════════════════════════
+
+local KeybindSystem = {}
+KeybindSystem._Binds    = {}   -- { id → BindEntry }
+KeybindSystem._Listening = nil  -- id aguardando rebind
+
+-- ── Tipos internos ───────────────────────────────
+--[[
+    BindEntry = {
+        id         : string,
+        key        : Enum.KeyCode,
+        label      : string,
+        callback   : function(isDown: bool),
+        toggle     : bool,        -- true = toggle on/off; false = hold
+        state      : bool,        -- estado atual (toggle mode)
+        enabled    : bool,
+        cooldown   : number,      -- segundos entre ativações
+        _lastFire  : number,      -- tick() da última ativação
+        _downConn  : RBXScriptConnection,
+        _upConn    : RBXScriptConnection,
+    }
+--]]
+
+-- Teclas que nunca podem ser bindadas (evita conflito com Roblox/executor)
+local BLACKLIST = {
+    [Enum.KeyCode.Escape]       = true,
+    [Enum.KeyCode.F1]           = true,
+    [Enum.KeyCode.F2]           = true,
+    [Enum.KeyCode.F3]           = true,
+    [Enum.KeyCode.F4]           = true,
+    [Enum.KeyCode.F5]           = true,
+    [Enum.KeyCode.Delete]       = true,
+    [Enum.KeyCode.Insert]       = true,
+    [Enum.KeyCode.Home]         = true,
+    [Enum.KeyCode.End]          = true,
+}
+
+-- ── Utilitário ───────────────────────────────────
+local function keyName(keyCode)
+    local s = tostring(keyCode)
+    return s:match("KeyCode%.(.+)") or s
+end
+
+-- ── API pública ──────────────────────────────────
+
+--[[
+    KeybindSystem:Register(options) → BindEntry público
+    
+    options = {
+        id       : string   (único, obrigatório),
+        key      : Enum.KeyCode,
+        label    : string   (nome legível, ex: "Toggle UI"),
+        callback : function(isDown: bool),
+        toggle   : bool     (default false = hold),
+        enabled  : bool     (default true),
+        cooldown : number   (segundos, default 0),
+    }
+--]]
+function KeybindSystem:Register(opts)
+    assert(type(opts.id)       == "string",   "[Keybind] 'id' precisa ser string")
+    assert(type(opts.callback) == "function",  "[Keybind] 'callback' precisa ser function")
+    assert(opts.key ~= nil,                    "[Keybind] 'key' precisa ser um KeyCode")
+
+    -- Remove bind anterior com mesmo id se existir
+    if self._Binds[opts.id] then
+        self:Unregister(opts.id)
+    end
+
+    local entry = {
+        id        = opts.id,
+        key       = opts.key,
+        label     = opts.label    or opts.id,
+        callback  = opts.callback,
+        toggle    = opts.toggle   or false,
+        state     = false,
+        enabled   = (opts.enabled ~= false),
+        cooldown  = opts.cooldown or 0,
+        _lastFire = 0,
+        _downConn = nil,
+        _upConn   = nil,
+    }
+
+    -- Conexão de KeyDown
+    entry._downConn = UserInputService.InputBegan:Connect(function(inp, gameProcessed)
+        if gameProcessed then return end
+        if not entry.enabled then return end
+        if inp.KeyCode ~= entry.key then return end
+        if BLACKLIST[entry.key] then return end
+
+        -- Cooldown check
+        local now = tick()
+        if (now - entry._lastFire) < entry.cooldown then return end
+        entry._lastFire = now
+
+        if entry.toggle then
+            entry.state = not entry.state
+            pcall(entry.callback, entry.state)
+        else
+            pcall(entry.callback, true)
+        end
+    end)
+
+    -- Conexão de KeyUp (só relevante em modo hold)
+    entry._upConn = UserInputService.InputEnded:Connect(function(inp, gameProcessed)
+        if inp.KeyCode ~= entry.key then return end
+        if not entry.toggle and entry.enabled then
+            pcall(entry.callback, false)
+        end
+    end)
+
+    self._Binds[opts.id] = entry
+
+    -- Retorna handle público (sem expor internos)
+    return self:_makeHandle(opts.id)
+end
+
+-- Remove e desconecta um bind pelo id
+function KeybindSystem:Unregister(id)
+    local entry = self._Binds[id]
+    if not entry then return end
+    if entry._downConn then entry._downConn:Disconnect() end
+    if entry._upConn   then entry._upConn:Disconnect()   end
+    self._Binds[id] = nil
+end
+
+-- Ativa/desativa um bind sem remover
+function KeybindSystem:SetEnabled(id, enabled)
+    local entry = self._Binds[id]
+    if entry then entry.enabled = enabled end
+end
+
+-- Retorna a key atual de um bind
+function KeybindSystem:GetKey(id)
+    local entry = self._Binds[id]
+    return entry and entry.key or nil
+end
+
+-- Retorna o nome legível da key atual
+function KeybindSystem:GetKeyName(id)
+    local entry = self._Binds[id]
+    return entry and keyName(entry.key) or "?"
+end
+
+-- Retorna o estado atual (só válido em toggle mode)
+function KeybindSystem:GetState(id)
+    local entry = self._Binds[id]
+    return entry and entry.state or false
+end
+
+--[[
+    Rebind interativo:
+    Chama callback(newKey) quando o usuário pressionar uma tecla válida.
+    Cancela automaticamente após `timeout` segundos (default 10).
+    Retorna false imediatamente se blacklisted.
+--]]
+function KeybindSystem:ListenForRebind(id, onRebind, timeout)
+    if self._Listening then return end  -- já está ouvindo outro
+    local entry = self._Binds[id]
+    if not entry then return end
+
+    self._Listening = id
+    timeout = timeout or 10
+
+    local conn
+    local timer = task.delay(timeout, function()
+        if self._Listening == id then
+            self._Listening = nil
+            if conn then conn:Disconnect() end
+        end
+    end)
+
+    conn = UserInputService.InputBegan:Connect(function(inp, gameProcessed)
+        if self._Listening ~= id then return end
+        if inp.UserInputType ~= Enum.UserInputType.Keyboard then return end
+        if BLACKLIST[inp.KeyCode] then return end
+        if inp.KeyCode == Enum.KeyCode.Unknown then return end
+
+        -- Cancela o timer
+        task.cancel(timer)
+        self._Listening = nil
+        conn:Disconnect()
+
+        -- Reconecta com nova tecla
+        local oldCb       = entry.callback
+        local oldToggle   = entry.toggle
+        local oldEnabled  = entry.enabled
+        local oldCooldown = entry.cooldown
+        local oldLabel    = entry.label
+
+        self:Unregister(id)
+        self:Register({
+            id       = id,
+            key      = inp.KeyCode,
+            label    = oldLabel,
+            callback = oldCb,
+            toggle   = oldToggle,
+            enabled  = oldEnabled,
+            cooldown = oldCooldown,
+        })
+
+        if onRebind then pcall(onRebind, inp.KeyCode) end
+    end)
+end
+
+-- Desconecta TODOS os binds (cleanup total)
+function KeybindSystem:Destroy()
+    for id, _ in pairs(self._Binds) do
+        self:Unregister(id)
+    end
+    self._Listening = nil
+end
+
+-- ── Handle público (retornado pelo Register) ─────
+function KeybindSystem:_makeHandle(id)
+    local handle = {}
+
+    function handle:GetKey()
+        return KeybindSystem:GetKey(id)
+    end
+    function handle:GetKeyName()
+        return KeybindSystem:GetKeyName(id)
+    end
+    function handle:GetState()
+        return KeybindSystem:GetState(id)
+    end
+    function handle:SetEnabled(e)
+        KeybindSystem:SetEnabled(id, e)
+    end
+    function handle:Rebind(onRebind, timeout)
+        KeybindSystem:ListenForRebind(id, onRebind, timeout)
+    end
+    function handle:Unregister()
+        KeybindSystem:Unregister(id)
+    end
+
+    return handle
+end
+
+return KeybindSystem
+
+-- ════════════════════════════════════════════════
 --  WIDGETS
 -- ════════════════════════════════════════════════
-local Widgets = {}
+local Widgets = {-- ────────────────────────────────────────────────
+-- KEYBIND
+-- ────────────────────────────────────────────────
+function Widgets.Keybind(scroll, text, defaultKey, order, cb)
+    local currentKey = defaultKey or Enum.KeyCode.RightShift
+    local isListening = false
+
+    local wrap = Instance.new("Frame")
+    wrap.Size = UDim2.new(1,0,0,Config.WidgetH)
+    wrap.BackgroundTransparency = 1
+    wrap.LayoutOrder = order
+    wrap.Parent = scroll
+
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,1,0)
+    f.BackgroundColor3 = Theme.WidgetBg
+    f.BorderSizePixel = 0
+    f.Parent = wrap
+    Util.Corner(f, Config.WidgetCorner)
+    local stroke = Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1,-120,1,0)
+    lbl.Position = UDim2.new(0,12,0,0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 12
+    lbl.TextColor3 = Theme.TextPrimary
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = f
+
+    local keyBox = Instance.new("TextButton")
+    keyBox.Size = UDim2.new(0,100,0,24)
+    keyBox.Position = UDim2.new(1,-110,0.5,-12)
+    keyBox.BackgroundColor3 = Theme.SurfaceAlt
+    keyBox.Text = keyName(currentKey)
+    keyBox.Font = Enum.Font.GothamBold
+    keyBox.TextSize = 11
+    keyBox.TextColor3 = Theme.Accent
+    keyBox.AutoButtonColor = false
+    Util.Corner(keyBox, UDim.new(0,6))
+    Util.Stroke(keyBox, Theme.Border, 1)
+    keyBox.Parent = f
+
+    local function updateVisual()
+        keyBox.Text = isListening and "..." or keyName(currentKey)
+        if isListening then
+            keyBox.BackgroundColor3 = Theme.Accent
+            keyBox.TextColor3 = Theme.Background
+        else
+            keyBox.BackgroundColor3 = Theme.SurfaceAlt
+            keyBox.TextColor3 = Theme.Accent
+        end
+    end
+
+    local handle = nil
+
+    local function registerBind()
+        if handle then handle:Unregister() end
+
+        handle = KeybindSystem:Register({
+            id = "keybind_" .. tostring(tick()), -- id único
+            key = currentKey,
+            label = text,
+            callback = cb or function() end,
+            toggle = false,     -- você pode mudar pra true se quiser toggle
+            cooldown = 0,
+        })
+    end
+
+    registerBind() -- registra pela primeira vez
+
+    keyBox.MouseButton1Click:Connect(function()
+        if isListening then return end
+        isListening = true
+        updateVisual()
+
+        KeybindSystem:ListenForRebind(handle.id or "", function(newKey)
+            currentKey = newKey
+            isListening = false
+            updateVisual()
+            registerBind() -- atualiza o bind com a nova tecla
+        end, 8) -- 8 segundos pra rebind
+    end)
+
+    -- Hover effects
+    keyBox.MouseEnter:Connect(function()
+        if not isListening then
+            Util.Tween(keyBox, Config.TweenFast, {BackgroundColor3 = Theme.SurfaceHover})
+        end
+    end)
+    keyBox.MouseLeave:Connect(function()
+        if not isListening then
+            Util.Tween(keyBox, Config.TweenFast, {BackgroundColor3 = Theme.SurfaceAlt})
+        end
+    end)
+
+    local obj = {}
+    function obj:GetKey() return currentKey end
+    function obj:SetKey(newKey)
+        currentKey = newKey
+        updateVisual()
+        registerBind()
+    end
+    function obj:Destroy()
+        if handle then handle:Unregister() end
+    end
+
+    return obj
+end}
 
 -- ────────────────────────────────────────────────
 --  BUTTON
@@ -1061,6 +1413,11 @@ function ModernNoir.CreateWindow(title)
         function Tab:AddSlider(text, minV, maxV, def, cb)
             self._Count += 1
             return Widgets.Slider(self.ScrollFrame, text, minV, maxV, def, self._Count, cb)
+        end
+
+        function Tab:AddKeybind(text, defaultKey, callback)
+            self._Count += 1
+            return Widgets.Keybind(self.ScrollFrame, text, defaultKey, self._Count, callback)
         end
 
         table.insert(self._Tabs, Tab)
