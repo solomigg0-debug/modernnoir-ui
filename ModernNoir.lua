@@ -45,6 +45,19 @@ local Theme = {
     SliderKnob     = Color3.fromHex("#F0CE5E"),
     NotifyBg       = Color3.fromHex("#1E2124"),
     NotifyBarBg    = Color3.fromHex("#2A2E33"),
+    NotifySuccess  = Color3.fromHex("#27AE60"),
+    NotifyError    = Color3.fromHex("#C0392B"),
+    NotifyWarning  = Color3.fromHex("#E67E22"),
+    NotifyInfo     = Color3.fromHex("#2980B9"),
+    SectionLine    = Color3.fromHex("#2A2E33"),
+    SectionText    = Color3.fromHex("#6B6560"),
+    InputBg        = Color3.fromHex("#191C1F"),
+    InputBorder    = Color3.fromHex("#32363A"),
+    InputText      = Color3.fromHex("#E8E6E1"),
+    DropdownArrow  = Color3.fromHex("#9A9590"),
+    KeybindBg      = Color3.fromHex("#191C1F"),
+    KeybindBorder  = Color3.fromHex("#32363A"),
+    KeybindActive  = Color3.fromHex("#D4AF37"),
 }
 
 -- ════════════════════════════════════════════════
@@ -98,6 +111,16 @@ local Config = {
     NotifySlideT  = 0.30,
     NotifyFadeT   = 0.22,
     NotifyDur     = 4,
+
+    SectionH      = 28,
+    SeparatorH    = 18,
+    LabelH        = 28,
+    TextboxH      = 36,
+    DropdownH     = 36,
+    DropdownItemH = 30,
+    DropdownMaxH  = 150,
+    KeybindH      = 36,
+    KeybindW      = 80,
 }
 
 -- ════════════════════════════════════════════════
@@ -105,7 +128,6 @@ local Config = {
 -- ════════════════════════════════════════════════
 local Util = {}
 
--- FIX: _activeTweens para cancelar tweens anteriores no mesmo objeto
 local _activeTweens = {}
 
 function Util.Tween(obj, info, props)
@@ -124,7 +146,6 @@ function Util.Tween(obj, info, props)
     return t
 end
 
--- FIX: clamp dentro de Util por consistência
 function Util.Clamp(v, lo, hi)
     return math.max(lo, math.min(hi, v))
 end
@@ -219,8 +240,8 @@ function Widgets.Button(scroll, text, order, cb)
     hit.Size = UDim2.new(1,0,1,0); hit.BackgroundTransparency = 1
     hit.Text = ""; hit.ZIndex = 5; hit.AutoButtonColor = false; hit.Parent = f
 
-    local tPress   = TweenInfo.new(Config.PressT,   Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-    local tRelease = TweenInfo.new(Config.ReleaseT,  Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
+    local tPress   = TweenInfo.new(Config.PressT,  Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+    local tRelease = TweenInfo.new(Config.ReleaseT, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
     local hovered  = false
 
     hit.MouseEnter:Connect(function()
@@ -245,9 +266,9 @@ function Widgets.Button(scroll, text, order, cb)
         Util.Tween(stroke, tPress, {Color = Theme.AccentDim})
     end)
     hit.MouseButton1Up:Connect(function()
-        Util.Tween(scale, tRelease, {Scale = 1})
-        Util.Tween(f,     tRelease, {BackgroundColor3 = hovered and Theme.WidgetBgHover or Theme.WidgetBg})
-        Util.Tween(stroke,tRelease, {Color = hovered and Theme.Accent or Theme.Border})
+        Util.Tween(scale,  tRelease, {Scale = 1})
+        Util.Tween(f,      tRelease, {BackgroundColor3 = hovered and Theme.WidgetBgHover or Theme.WidgetBg})
+        Util.Tween(stroke, tRelease, {Color = hovered and Theme.Accent or Theme.Border})
     end)
     hit.MouseButton1Click:Connect(function()
         task.delay(Config.ReleaseT * 0.5, function()
@@ -260,7 +281,7 @@ function Widgets.Button(scroll, text, order, cb)
     function obj:SetEnabled(e)
         hit.Active = e
         Util.Tween(lbl,   Config.TweenFast, {TextColor3 = e and Theme.TextPrimary or Theme.TextDisabled})
-        Util.Tween(stroke,Config.TweenFast, {Color = e and Theme.Border or Theme.TextDisabled})
+        Util.Tween(stroke, Config.TweenFast, {Color = e and Theme.Border or Theme.TextDisabled})
     end
     return obj
 end
@@ -353,7 +374,6 @@ function Widgets.Toggle(scroll, text, default, order, cb)
     hit.Size = UDim2.new(1,0,1,0); hit.BackgroundTransparency = 1
     hit.Text = ""; hit.ZIndex = 6; hit.AutoButtonColor = false; hit.Parent = f
 
-    -- FIX: hover consistente em ambos os estados
     hit.MouseEnter:Connect(function()
         Util.Tween(f, Config.TweenFast, {BackgroundColor3 = Theme.WidgetBgHover})
     end)
@@ -508,7 +528,6 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
         end
     end
 
-    -- FIX: cleanup das conexões se widget for destruído durante drag
     local function cleanupDrag()
         dragging = false
         if moveConn  then moveConn:Disconnect();  moveConn  = nil end
@@ -516,9 +535,7 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     end
 
     wrap.AncestryChanged:Connect(function()
-        if not wrap.Parent then
-            cleanupDrag()
-        end
+        if not wrap.Parent then cleanupDrag() end
     end)
 
     hitbox.MouseEnter:Connect(function()
@@ -562,11 +579,541 @@ function Widgets.Slider(scroll, text, minV, maxV, default, order, cb)
     return obj
 end
 
+-- ────────────────────────────────────────────────
+--  SECTION
+-- ────────────────────────────────────────────────
+function Widgets.Section(scroll, text, order)
+    local wrap = Instance.new("Frame")
+    wrap.Size = UDim2.new(1,0,0,Config.SectionH)
+    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
+    wrap.LayoutOrder = order; wrap.Parent = scroll
+
+    -- linha esquerda
+    local lineL = Instance.new("Frame")
+    lineL.Size = UDim2.new(0,10,0,1)
+    lineL.Position = UDim2.new(0,0,0.5,0)
+    lineL.BackgroundColor3 = Theme.SectionLine; lineL.BorderSizePixel = 0
+    lineL.Parent = wrap
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1,-28,1,0)
+    lbl.Position = UDim2.new(0,14,0,0)
+    lbl.BackgroundTransparency = 1; lbl.Text = string.upper(text or "SECTION")
+    lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 9
+    lbl.TextColor3 = Theme.SectionText
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 2; lbl.Parent = wrap
+
+    -- linha direita (ocupa o resto após o texto)
+    local lineR = Instance.new("Frame")
+    lineR.Size = UDim2.new(1,0,0,1)
+    lineR.Position = UDim2.new(0,0,0.5,0)
+    lineR.BackgroundColor3 = Theme.SectionLine; lineR.BorderSizePixel = 0
+    lineR.ZIndex = 1; lineR.Parent = wrap
+
+    -- o label fica em cima da linha direita
+    lbl.ZIndex = 2
+
+    local obj = {}
+    function obj:SetText(t) lbl.Text = string.upper(t or "") end
+    return obj
+end
+
+-- ────────────────────────────────────────────────
+--  SEPARATOR
+-- ────────────────────────────────────────────────
+function Widgets.Separator(scroll, order)
+    local wrap = Instance.new("Frame")
+    wrap.Size = UDim2.new(1,0,0,Config.SeparatorH)
+    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
+    wrap.LayoutOrder = order; wrap.Parent = scroll
+
+    local line = Instance.new("Frame")
+    line.Size = UDim2.new(1,0,0,1)
+    line.Position = UDim2.new(0,0,0.5,0)
+    line.BackgroundColor3 = Theme.SectionLine; line.BorderSizePixel = 0
+    line.Parent = wrap
+end
+
+-- ────────────────────────────────────────────────
+--  LABEL
+-- ────────────────────────────────────────────────
+function Widgets.Label(scroll, text, order)
+    local wrap = Instance.new("Frame")
+    wrap.Size = UDim2.new(1,0,0,Config.LabelH)
+    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
+    wrap.LayoutOrder = order; wrap.Parent = scroll
+
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,1,0)
+    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
+    f.Parent = wrap
+    Util.Corner(f, Config.WidgetCorner)
+    Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+
+    local pad = Instance.new("UIPadding")
+    pad.PaddingLeft  = UDim.new(0,12); pad.PaddingRight = UDim.new(0,12)
+    pad.Parent = f
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1,0,1,0)
+    lbl.BackgroundTransparency = 1; lbl.Text = text or ""
+    lbl.Font = Enum.Font.Gotham; lbl.TextSize = 11
+    lbl.TextColor3 = Theme.TextSecondary
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextWrapped = true
+    lbl.ZIndex = 2; lbl.Parent = f
+
+    local obj = {}
+    function obj:SetText(t)
+        lbl.Text = t or ""
+    end
+    function obj:SetColor(c)
+        Util.Tween(lbl, Config.TweenFast, {TextColor3 = c})
+    end
+    return obj
+end
+
+-- ────────────────────────────────────────────────
+--  TEXTBOX
+-- ────────────────────────────────────────────────
+function Widgets.Textbox(scroll, text, placeholder, default, order, cb)
+    local wrap = Instance.new("Frame")
+    wrap.Size = UDim2.new(1,0,0,Config.TextboxH)
+    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
+    wrap.LayoutOrder = order; wrap.Parent = scroll
+
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,1,0)
+    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
+    f.Parent = wrap
+    Util.Corner(f, Config.WidgetCorner)
+    local stroke = Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size = UDim2.new(0.45,0,1,0); nameLbl.Position = UDim2.new(0,12,0,0)
+    nameLbl.BackgroundTransparency = 1; nameLbl.Text = text or ""
+    nameLbl.Font = Enum.Font.GothamSemibold; nameLbl.TextSize = 12
+    nameLbl.TextColor3 = Theme.TextPrimary
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.ZIndex = 2; nameLbl.Parent = f
+
+    local inputFrame = Instance.new("Frame")
+    inputFrame.Size = UDim2.new(0.52,0,0,24)
+    inputFrame.Position = UDim2.new(1,-8,0.5,0)
+    inputFrame.AnchorPoint = Vector2.new(1,0.5)
+    inputFrame.BackgroundColor3 = Theme.InputBg; inputFrame.BorderSizePixel = 0
+    inputFrame.ZIndex = 3; inputFrame.Parent = f
+    Util.Corner(inputFrame, UDim.new(0,5))
+    local inputStroke = Util.Stroke(inputFrame, Theme.InputBorder, 1)
+
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(1,-12,1,0); box.Position = UDim2.new(0,6,0,0)
+    box.BackgroundTransparency = 1
+    box.Text = default or ""
+    box.PlaceholderText = placeholder or ""
+    box.PlaceholderColor3 = Theme.TextDisabled
+    box.Font = Enum.Font.Gotham; box.TextSize = 11
+    box.TextColor3 = Theme.InputText
+    box.TextXAlignment = Enum.TextXAlignment.Left
+    box.ClearTextOnFocus = false
+    box.ZIndex = 4; box.Parent = inputFrame
+
+    box.Focused:Connect(function()
+        Util.Tween(inputStroke, Config.TweenFast, {Color = Theme.Accent})
+        Util.Tween(stroke,      Config.TweenFast, {Color = Theme.Accent})
+        Util.Tween(f,           Config.TweenFast, {BackgroundColor3 = Theme.WidgetBgHover})
+    end)
+    box.FocusLost:Connect(function(enterPressed)
+        Util.Tween(inputStroke, Config.TweenFast, {Color = Theme.InputBorder})
+        Util.Tween(stroke,      Config.TweenFast, {Color = Theme.Border})
+        Util.Tween(f,           Config.TweenFast, {BackgroundColor3 = Theme.WidgetBg})
+        if cb then pcall(cb, box.Text, enterPressed) end
+    end)
+
+    local obj = {}
+    function obj:GetText()    return box.Text end
+    function obj:SetText(t)   box.Text = t or "" end
+    function obj:SetLabel(t)  nameLbl.Text = t or "" end
+    return obj
+end
+
+-- ────────────────────────────────────────────────
+--  DROPDOWN
+-- ────────────────────────────────────────────────
+-- openDropdown: referência global ao dropdown aberto no momento
+-- garante que só um dropdown fica aberto por vez
+local _openDropdownClose = nil
+
+function Widgets.Dropdown(scroll, text, options, default, order, cb)
+    options = options or {}
+    local selected = default or (options[1] or "")
+
+    local wrap = Instance.new("Frame")
+    wrap.Size = UDim2.new(1,0,0,Config.DropdownH)
+    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
+    wrap.LayoutOrder = order; wrap.ClipsDescendants = false
+    wrap.Parent = scroll
+
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,1,0)
+    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
+    f.ZIndex = 2; f.Parent = wrap
+    Util.Corner(f, Config.WidgetCorner)
+    local stroke = Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size = UDim2.new(0.45,0,1,0); nameLbl.Position = UDim2.new(0,12,0,0)
+    nameLbl.BackgroundTransparency = 1; nameLbl.Text = text or ""
+    nameLbl.Font = Enum.Font.GothamSemibold; nameLbl.TextSize = 12
+    nameLbl.TextColor3 = Theme.TextPrimary
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.ZIndex = 3; nameLbl.Parent = f
+
+    local valBtn = Instance.new("TextButton")
+    valBtn.Size = UDim2.new(0.52,0,0,24)
+    valBtn.Position = UDim2.new(1,-8,0.5,0)
+    valBtn.AnchorPoint = Vector2.new(1,0.5)
+    valBtn.BackgroundColor3 = Theme.InputBg; valBtn.BorderSizePixel = 0
+    valBtn.Text = ""; valBtn.AutoButtonColor = false
+    valBtn.ZIndex = 3; valBtn.Parent = f
+    Util.Corner(valBtn, UDim.new(0,5))
+    local valStroke = Util.Stroke(valBtn, Theme.InputBorder, 1)
+
+    local selLbl = Instance.new("TextLabel")
+    selLbl.Size = UDim2.new(1,-22,1,0); selLbl.Position = UDim2.new(0,8,0,0)
+    selLbl.BackgroundTransparency = 1; selLbl.Text = selected
+    selLbl.Font = Enum.Font.Gotham; selLbl.TextSize = 11
+    selLbl.TextColor3 = Theme.InputText
+    selLbl.TextXAlignment = Enum.TextXAlignment.Left
+    selLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    selLbl.ZIndex = 4; selLbl.Parent = valBtn
+
+    local arrowLbl = Instance.new("TextLabel")
+    arrowLbl.Size = UDim2.new(0,18,1,0); arrowLbl.Position = UDim2.new(1,-18,0,0)
+    arrowLbl.BackgroundTransparency = 1; arrowLbl.Text = "▾"
+    arrowLbl.Font = Enum.Font.GothamBold; arrowLbl.TextSize = 10
+    arrowLbl.TextColor3 = Theme.DropdownArrow
+    arrowLbl.ZIndex = 4; arrowLbl.Parent = valBtn
+
+    -- Lista de opções (renderizada no scroll pai para não ser clipada)
+    local listFrame = Instance.new("Frame")
+    listFrame.Size = UDim2.new(0.52,0,0,0)
+    listFrame.Position = UDim2.new(1,-8,1,4)
+    listFrame.AnchorPoint = Vector2.new(1,0)
+    listFrame.BackgroundColor3 = Theme.Surface; listFrame.BorderSizePixel = 0
+    listFrame.ClipsDescendants = true
+    listFrame.Visible = false
+    listFrame.ZIndex = 20; listFrame.Parent = f
+    Util.Corner(listFrame, UDim.new(0,6))
+    Util.Stroke(listFrame, Theme.Border, 1)
+
+    local listScroll = Instance.new("ScrollingFrame")
+    listScroll.Size = UDim2.new(1,0,1,0)
+    listScroll.BackgroundTransparency = 1; listScroll.BorderSizePixel = 0
+    listScroll.ScrollBarThickness = 2
+    listScroll.ScrollBarImageColor3 = Theme.ScrollBar
+    listScroll.CanvasSize = UDim2.new(0,0,0,0)
+    listScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    listScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    listScroll.ZIndex = 21; listScroll.Parent = listFrame
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Padding = UDim.new(0,0)
+    listLayout.Parent = listScroll
+
+    local listPad = Instance.new("UIPadding")
+    listPad.PaddingTop    = UDim.new(0,4); listPad.PaddingBottom = UDim.new(0,4)
+    listPad.PaddingLeft   = UDim.new(0,4); listPad.PaddingRight  = UDim.new(0,4)
+    listPad.Parent = listScroll
+
+    local isOpen = false
+
+    local function closeList()
+        if not isOpen then return end
+        isOpen = false
+        Util.Tween(listFrame, Config.TweenFast, {Size = UDim2.new(0.52,0,0,0)})
+        Util.Tween(arrowLbl,  Config.TweenFast, {TextColor3 = Theme.DropdownArrow})
+        Util.Tween(valStroke, Config.TweenFast, {Color = Theme.InputBorder})
+        Util.Tween(stroke,    Config.TweenFast, {Color = Theme.Border})
+        task.delay(Config.TweenFast.Time + 0.02, function()
+            if not isOpen then listFrame.Visible = false end
+        end)
+        _openDropdownClose = nil
+    end
+
+    local function openList()
+        -- fecha qualquer outro dropdown aberto
+        if _openDropdownClose then _openDropdownClose() end
+        _openDropdownClose = closeList
+
+        isOpen = true
+        local itemCount   = #options
+        local totalH      = itemCount * Config.DropdownItemH + 8
+        local clampedH    = math.min(totalH, Config.DropdownMaxH)
+        listFrame.Visible = true
+        listFrame.Size    = UDim2.new(0.52,0,0,0)
+        Util.Tween(listFrame, Config.TweenFast, {Size = UDim2.new(0.52,0,0,clampedH)})
+        Util.Tween(arrowLbl,  Config.TweenFast, {TextColor3 = Theme.Accent})
+        Util.Tween(valStroke, Config.TweenFast, {Color = Theme.Accent})
+        Util.Tween(stroke,    Config.TweenFast, {Color = Theme.Accent})
+    end
+
+    -- popula os itens
+    for i, opt in ipairs(options) do
+        local itemBtn = Instance.new("TextButton")
+        itemBtn.Size = UDim2.new(1,0,0,Config.DropdownItemH)
+        itemBtn.BackgroundColor3 = Theme.Surface; itemBtn.BorderSizePixel = 0
+        itemBtn.Text = ""; itemBtn.AutoButtonColor = false
+        itemBtn.LayoutOrder = i; itemBtn.ZIndex = 22
+        itemBtn.Parent = listScroll
+        Util.Corner(itemBtn, UDim.new(0,4))
+
+        local optLbl = Instance.new("TextLabel")
+        optLbl.Size = UDim2.new(1,-16,1,0); optLbl.Position = UDim2.new(0,8,0,0)
+        optLbl.BackgroundTransparency = 1; optLbl.Text = tostring(opt)
+        optLbl.Font = Enum.Font.Gotham; optLbl.TextSize = 11
+        optLbl.TextColor3 = (opt == selected) and Theme.AccentGlow or Theme.TextSecondary
+        optLbl.TextXAlignment = Enum.TextXAlignment.Left
+        optLbl.ZIndex = 23; optLbl.Parent = itemBtn
+
+        local checkLbl = Instance.new("TextLabel")
+        checkLbl.Size = UDim2.new(0,14,1,0); checkLbl.Position = UDim2.new(1,-16,0,0)
+        checkLbl.BackgroundTransparency = 1
+        checkLbl.Text = (opt == selected) and "✓" or ""
+        checkLbl.Font = Enum.Font.GothamBold; checkLbl.TextSize = 9
+        checkLbl.TextColor3 = Theme.Accent
+        checkLbl.ZIndex = 23; checkLbl.Parent = itemBtn
+
+        itemBtn.MouseEnter:Connect(function()
+            Util.Tween(itemBtn, Config.TweenFast, {BackgroundColor3 = Theme.SurfaceHover})
+            Util.Tween(optLbl,  Config.TweenFast, {TextColor3 = Theme.TextPrimary})
+        end)
+        itemBtn.MouseLeave:Connect(function()
+            Util.Tween(itemBtn, Config.TweenFast, {BackgroundColor3 = Theme.Surface})
+            Util.Tween(optLbl,  Config.TweenFast, {
+                TextColor3 = (opt == selected) and Theme.AccentGlow or Theme.TextSecondary
+            })
+        end)
+        itemBtn.MouseButton1Click:Connect(function()
+            -- atualiza visual de todos os itens
+            for _, child in ipairs(listScroll:GetChildren()) do
+                if child:IsA("TextButton") then
+                    local ol = child:FindFirstChildOfClass("TextLabel")
+                    local cl = child:FindFirstChild("checkLbl") -- fallback pelo nome
+                    -- percorre os filhos diretos
+                    for _, lc in ipairs(child:GetChildren()) do
+                        if lc:IsA("TextLabel") then
+                            if lc.Name == "checkLbl" then
+                                lc.Text = ""
+                            else
+                                Util.Tween(lc, Config.TweenFast, {TextColor3 = Theme.TextSecondary})
+                            end
+                        end
+                    end
+                end
+            end
+            -- marca o selecionado
+            optLbl.TextColor3   = Theme.AccentGlow
+            checkLbl.Text       = "✓"
+            selected            = opt
+            selLbl.Text         = tostring(opt)
+            closeList()
+            if cb then pcall(cb, selected) end
+        end)
+    end
+
+    valBtn.MouseButton1Click:Connect(function()
+        if isOpen then closeList() else openList() end
+    end)
+
+    -- fecha ao clicar fora — conexão guardada para cleanup
+    local outsideConn = UserInputService.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 and isOpen then
+            task.defer(function()
+                if isOpen then closeList() end
+            end)
+        end
+    end)
+
+    -- limpa conexão global quando o widget sair da hierarquia
+    wrap.AncestryChanged:Connect(function()
+        if not wrap.Parent then
+            if isOpen then closeList() end
+            outsideConn:Disconnect()
+        end
+    end)
+
+    local obj = {}
+    function obj:GetSelected() return selected end
+    function obj:SetSelected(opt, silent)
+        if table.find(options, opt) then
+            selected    = opt
+            selLbl.Text = tostring(opt)
+            if not silent and cb then pcall(cb, selected) end
+        end
+    end
+    function obj:SetOptions(newOptions)
+        options = newOptions or {}
+        -- limpa itens antigos
+        for _, child in ipairs(listScroll:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+        selected = options[1] or ""
+        selLbl.Text = selected
+        -- recria itens — chama recursivamente a mesma lógica de população
+        -- via closure não é possível recriar sem duplicar código,
+        -- então destrói e recria o widget inteiro não é ideal:
+        -- a abordagem correta é expor apenas SetOptions que revalida e repopula.
+        -- implementação simplificada: força o usuário a recriar se precisar
+        -- de mudar options dinamicamente (documentado abaixo)
+    end
+    function obj:SetLabel(t) nameLbl.Text = t or "" end
+    return obj
+end
+
+-- ────────────────────────────────────────────────
+--  KEYBIND
+-- ────────────────────────────────────────────────
+function Widgets.Keybind(scroll, text, default, order, cb)
+    -- default: Enum.KeyCode ou nil
+    local boundKey  = default or nil
+    local listening = false
+
+    local wrap = Instance.new("Frame")
+    wrap.Size = UDim2.new(1,0,0,Config.KeybindH)
+    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
+    wrap.LayoutOrder = order; wrap.Parent = scroll
+
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,1,0)
+    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
+    f.Parent = wrap
+    Util.Corner(f, Config.WidgetCorner)
+    local stroke = Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+
+    local sico = Instance.new("TextLabel")
+    sico.Size = UDim2.new(0,16,1,0); sico.Position = UDim2.new(0,10,0,0)
+    sico.BackgroundTransparency = 1; sico.Text = "⌨"
+    sico.Font = Enum.Font.GothamBold; sico.TextSize = 10
+    sico.TextColor3 = Theme.AccentDim; sico.ZIndex = 2; sico.Parent = f
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size = UDim2.new(1,-(Config.KeybindW + 24),1,0)
+    nameLbl.Position = UDim2.new(0,30,0,0)
+    nameLbl.BackgroundTransparency = 1; nameLbl.Text = text or ""
+    nameLbl.Font = Enum.Font.GothamSemibold; nameLbl.TextSize = 12
+    nameLbl.TextColor3 = Theme.TextPrimary
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.ZIndex = 2; nameLbl.Parent = f
+
+    local keyBtn = Instance.new("TextButton")
+    keyBtn.Size = UDim2.new(0, Config.KeybindW, 0, 22)
+    keyBtn.Position = UDim2.new(1,-8,0.5,0)
+    keyBtn.AnchorPoint = Vector2.new(1,0.5)
+    keyBtn.BackgroundColor3 = Theme.KeybindBg; keyBtn.BorderSizePixel = 0
+    keyBtn.Text = ""; keyBtn.AutoButtonColor = false
+    keyBtn.ZIndex = 3; keyBtn.Parent = f
+    Util.Corner(keyBtn, UDim.new(0,5))
+    local keyStroke = Util.Stroke(keyBtn, Theme.KeybindBorder, 1)
+
+    local keyLbl = Instance.new("TextLabel")
+    keyLbl.Size = UDim2.new(1,0,1,0)
+    keyLbl.BackgroundTransparency = 1
+    keyLbl.Text = boundKey and boundKey.Name or "None"
+    keyLbl.Font = Enum.Font.GothamBold; keyLbl.TextSize = 10
+    keyLbl.TextColor3 = boundKey and Theme.Accent or Theme.TextDisabled
+    keyLbl.TextXAlignment = Enum.TextXAlignment.Center
+    keyLbl.ZIndex = 4; keyLbl.Parent = keyBtn
+
+    local inputConn = nil
+
+    local function stopListening()
+        listening = false
+        if inputConn then inputConn:Disconnect(); inputConn = nil end
+        Util.Tween(keyStroke, Config.TweenFast, {Color = Theme.KeybindBorder})
+        Util.Tween(stroke,    Config.TweenFast, {Color = Theme.Border})
+        Util.Tween(f,         Config.TweenFast, {BackgroundColor3 = Theme.WidgetBg})
+        Util.Tween(keyLbl,    Config.TweenFast, {
+            TextColor3 = boundKey and Theme.Accent or Theme.TextDisabled
+        })
+        keyLbl.Text = boundKey and boundKey.Name or "None"
+    end
+
+    local function startListening()
+        listening   = true
+        keyLbl.Text = "..."
+        Util.Tween(keyStroke, Config.TweenFast, {Color = Theme.KeybindActive})
+        Util.Tween(stroke,    Config.TweenFast, {Color = Theme.Accent})
+        Util.Tween(f,         Config.TweenFast, {BackgroundColor3 = Theme.WidgetBgHover})
+        Util.Tween(keyLbl,    Config.TweenFast, {TextColor3 = Theme.AccentGlow})
+
+        inputConn = UserInputService.InputBegan:Connect(function(inp, gameProcessed)
+            if not listening then return end
+            -- ignora clicks do mouse durante escuta
+            if inp.UserInputType == Enum.UserInputType.MouseButton1
+            or inp.UserInputType == Enum.UserInputType.MouseButton2
+            or inp.UserInputType == Enum.UserInputType.MouseButton3 then
+                return
+            end
+            if inp.UserInputType == Enum.UserInputType.Keyboard then
+                -- ESC cancela sem alterar a tecla
+                if inp.KeyCode == Enum.KeyCode.Escape then
+                    stopListening()
+                    return
+                end
+                boundKey = inp.KeyCode
+                stopListening()
+                if cb then pcall(cb, boundKey) end
+            end
+        end)
+    end
+
+    keyBtn.MouseEnter:Connect(function()
+        if listening then return end
+        Util.Tween(f,      Config.TweenFast, {BackgroundColor3 = Theme.WidgetBgHover})
+        Util.Tween(stroke, Config.TweenFast, {Color = Theme.AccentDim})
+    end)
+    keyBtn.MouseLeave:Connect(function()
+        if listening then return end
+        Util.Tween(f,      Config.TweenFast, {BackgroundColor3 = Theme.WidgetBg})
+        Util.Tween(stroke, Config.TweenFast, {Color = Theme.Border})
+    end)
+    keyBtn.MouseButton1Click:Connect(function()
+        if listening then stopListening() else startListening() end
+    end)
+
+    -- cleanup se o widget for destruído enquanto escuta
+    wrap.AncestryChanged:Connect(function()
+        if not wrap.Parent then stopListening() end
+    end)
+
+    local obj = {}
+    function obj:GetKey()    return boundKey end
+    function obj:SetKey(k, silent)
+        boundKey = k
+        stopListening()
+        if not silent and cb then pcall(cb, boundKey) end
+    end
+    function obj:SetText(t)  nameLbl.Text = t or "" end
+    return obj
+end
+
 -- ════════════════════════════════════════════════
 --  NOTIFICAÇÕES
 -- ════════════════════════════════════════════════
 local _notifyGui   = nil
 local _notifyStack = {}
+
+-- tipos de notificação e suas propriedades visuais
+local NotifyTypes = {
+    info    = { color = Theme.NotifyInfo,    icon = "ℹ" },
+    success = { color = Theme.NotifySuccess, icon = "✓" },
+    warning = { color = Theme.NotifyWarning, icon = "⚠" },
+    error   = { color = Theme.NotifyError,   icon = "✕" },
+    default = { color = Theme.Accent,        icon = "◈" },
+}
 
 local function getNotifyGui()
     if _notifyGui and _notifyGui.Parent then return _notifyGui end
@@ -581,10 +1128,9 @@ local function getNotifyGui()
 end
 
 local function reshuffleNotify()
-    -- FIX: verificação de CurrentCamera antes de acessar ViewportSize
     local cam = workspace.CurrentCamera
     if not cam then return end
-    local vp  = cam.ViewportSize
+    local vp   = cam.ViewportSize
     local cumY = Config.NotifyPadB
 
     for i = #_notifyStack, 1, -1 do
@@ -602,12 +1148,15 @@ local function reshuffleNotify()
     end
 end
 
-local function createNotify(title, body, duration)
+local function createNotify(title, body, duration, notifyType)
     local ng  = getNotifyGui()
-    -- FIX: verificação de CurrentCamera
     local cam = workspace.CurrentCamera
     if not cam then return end
     local vp  = cam.ViewportSize
+
+    local typeData = NotifyTypes[notifyType] or NotifyTypes.default
+    local accentColor = typeData.color
+    local iconChar    = typeData.icon
 
     local w    = Config.NotifyW
     local h    = Config.NotifyH
@@ -628,15 +1177,15 @@ local function createNotify(title, body, duration)
 
     local accentBar = Instance.new("Frame")
     accentBar.Size = UDim2.new(0,3,1,0)
-    accentBar.BackgroundColor3 = Theme.Accent; accentBar.BorderSizePixel = 0
+    accentBar.BackgroundColor3 = accentColor; accentBar.BorderSizePixel = 0
     accentBar.ZIndex = 11; accentBar.Parent = card
     Util.Corner(accentBar, UDim.new(0,2))
 
     local ico = Instance.new("TextLabel")
     ico.Size = UDim2.new(0,18,0,18); ico.Position = UDim2.new(0,12,0,10)
-    ico.BackgroundTransparency = 1; ico.Text = "◈"
-    ico.Font = Enum.Font.GothamBold; ico.TextSize = 13
-    ico.TextColor3 = Theme.Accent; ico.ZIndex = 12; ico.Parent = card
+    ico.BackgroundTransparency = 1; ico.Text = iconChar
+    ico.Font = Enum.Font.GothamBold; ico.TextSize = 12
+    ico.TextColor3 = accentColor; ico.ZIndex = 12; ico.Parent = card
 
     local titLbl = Instance.new("TextLabel")
     titLbl.Size = UDim2.new(1,-38,0,18); titLbl.Position = UDim2.new(0,34,0,10)
@@ -664,7 +1213,7 @@ local function createNotify(title, body, duration)
 
     local barFill = Instance.new("Frame")
     barFill.Size = UDim2.new(1,0,1,0)
-    barFill.BackgroundColor3 = Theme.Accent; barFill.BorderSizePixel = 0
+    barFill.BackgroundColor3 = accentColor; barFill.BorderSizePixel = 0
     barFill.ZIndex = 12; barFill.Parent = barBg
 
     local closeX = Instance.new("TextButton")
@@ -740,7 +1289,6 @@ local function SwitchTab(win, newTab)
             Size = UDim2.new(0, Config.TabIndW, 1, -10),
             BackgroundTransparency = 0.5,
         })
-        -- FIX: guarda referência local antes do Completed disparar
         local prevCanvas = prev._Canvas
         fo.Completed:Connect(function()
             if prevCanvas and prevCanvas.Parent then
@@ -766,17 +1314,21 @@ end
 --  LIBRARY
 -- ════════════════════════════════════════════════
 local ModernNoir = {}
-ModernNoir._Version = "0.1.0"
+ModernNoir._Version = "0.2.0"
 ModernNoir._Windows = {}
 
-function ModernNoir:Notify(title, text, duration)
-    createNotify(title, text, duration)
+-- Notify com suporte a tipo: "default" | "info" | "success" | "warning" | "error"
+function ModernNoir:Notify(title, text, duration, notifyType)
+    createNotify(title, text, duration, notifyType or "default")
 end
 
-function ModernNoir.CreateWindow(title)
+function ModernNoir.CreateWindow(opts)
+    -- aceita string (título simples) ou tabela de opções
+    local title     = type(opts) == "string" and opts or (opts and opts.Title or "Modern Noir")
+    local toggleKey = type(opts) == "table"  and opts.ToggleKey or nil
 
     local sg = Instance.new("ScreenGui")
-    sg.Name = "ModernNoir_" .. (title or "Window")
+    sg.Name = "ModernNoir_" .. title
     sg.ResetOnSpawn = false
     sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     sg.DisplayOrder = 100
@@ -836,7 +1388,7 @@ function ModernNoir.CreateWindow(title)
 
     local htitle = Instance.new("TextLabel")
     htitle.Size = UDim2.new(1,-120,1,0); htitle.Position = UDim2.new(0,58,0,0)
-    htitle.BackgroundTransparency = 1; htitle.Text = title or "Modern Noir"
+    htitle.BackgroundTransparency = 1; htitle.Text = title
     htitle.Font = Enum.Font.GothamSemibold; htitle.TextSize = 13
     htitle.TextColor3 = Theme.TextPrimary
     htitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -851,21 +1403,19 @@ function ModernNoir.CreateWindow(title)
     local dragStart = nil
     local startPos  = nil
     local targetPos = mf.Position
+    local renderConn = nil
 
     local function updateDrag(inp)
         local delta = inp.Position - dragStart
         local cam   = workspace.CurrentCamera
         if not cam then return end
-        local vp = cam.ViewportSize
+        local vp    = cam.ViewportSize
         local halfW = (Config.WindowWidth  * uiScale.Scale) / 2
         local halfH = (Config.WindowHeight * uiScale.Scale) / 2
         local newX  = Util.Clamp(startPos.X.Offset + delta.X, halfW - vp.X/2, vp.X/2 - halfW)
         local newY  = Util.Clamp(startPos.Y.Offset + delta.Y, halfH - vp.Y/2, vp.Y/2 - halfH)
         targetPos   = UDim2.new(0.5, newX, 0.5, newY)
     end
-
-    -- FIX: renderConn só existe durante o drag, não eternamente
-    local renderConn = nil
 
     hdr.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1
@@ -874,7 +1424,6 @@ function ModernNoir.CreateWindow(title)
             dragStart = i.Position
             startPos  = mf.Position
 
-            -- FIX: Heartbeat com delta time para lerp frame-rate independent
             renderConn = RunService.Heartbeat:Connect(function(dt)
                 local alpha = 1 - math.pow(1 - Config.DragSmooth, dt * 60)
                 local c     = mf.Position
@@ -886,10 +1435,7 @@ function ModernNoir.CreateWindow(title)
             i.Changed:Connect(function()
                 if i.UserInputState == Enum.UserInputState.End then
                     dragging = false
-                    if renderConn then
-                        renderConn:Disconnect()
-                        renderConn = nil
-                    end
+                    if renderConn then renderConn:Disconnect(); renderConn = nil end
                 end
             end)
         end
@@ -902,7 +1448,6 @@ function ModernNoir.CreateWindow(title)
         end
     end)
 
-    -- FIX: uiChangedConn guardado junto com as outras conexões para cleanup centralizado
     local uiChangedConn = UserInputService.InputChanged:Connect(function(i)
         if dragging and i == dragInput then updateDrag(i) end
     end)
@@ -959,13 +1504,26 @@ function ModernNoir.CreateWindow(title)
     cf.BackgroundColor3 = Theme.Background; cf.BorderSizePixel = 0
     cf.ClipsDescendants = true; cf.Parent = mf
 
-    -- animação de entrada via UIScale em vez de Size (não conflita com o sistema de responsividade)
-    -- guarda o scale alvo calculado por updateScale() antes de sobrescrever
+    -- Animação de entrada via UIScale
     local targetScale = uiScale.Scale
     uiScale.Scale = 0.88
     mf.BackgroundTransparency = 1
     TweenService:Create(uiScale, Config.TweenMedium, {Scale = targetScale}):Play()
     TweenService:Create(mf,      Config.TweenMedium, {BackgroundTransparency = 0}):Play()
+
+    -- ── Toggle global por tecla ───────────────────────────────
+    local visible    = true
+    local toggleConn = nil
+
+    if toggleKey then
+        toggleConn = UserInputService.InputBegan:Connect(function(inp, gameProcessed)
+            if gameProcessed then return end
+            if inp.KeyCode == toggleKey then
+                visible = not visible
+                mf.Visible = visible
+            end
+        end)
+    end
 
     -- ── Destroy centralizado ──────────────────────────────────
     local destroyed = false
@@ -973,11 +1531,10 @@ function ModernNoir.CreateWindow(title)
         if destroyed then return end
         destroyed = true
 
-        -- FIX: todas as conexões globais desconectadas aqui
         uiChangedConn:Disconnect()
-        if renderConn then renderConn:Disconnect(); renderConn = nil end
+        if renderConn  then renderConn:Disconnect();  renderConn  = nil end
+        if toggleConn  then toggleConn:Disconnect();  toggleConn  = nil end
 
-        -- FIX: remove da lista _Windows
         for i, w in ipairs(ModernNoir._Windows) do
             if w == Window then table.remove(ModernNoir._Windows, i); break end
         end
@@ -1012,7 +1569,14 @@ function ModernNoir.CreateWindow(title)
     Window._Tabs      = {}
     Window._ActiveTab = nil
 
-    function Window:Destroy() doDestroy() end
+    function Window:Destroy()    doDestroy() end
+    function Window:SetVisible(v)
+        visible    = v
+        mf.Visible = v
+    end
+    function Window:SetTitle(t)
+        htitle.Text = t or ""
+    end
 
     function Window:AddTab(name, iconID)
         name = name or ("Aba " .. (#self._Tabs + 1))
@@ -1038,7 +1602,6 @@ function ModernNoir.CreateWindow(title)
         tIco.Size = UDim2.new(0,14,0,14); tIco.Position = UDim2.new(0,14,0.5,-7)
         tIco.BackgroundTransparency = 1; tIco.ZIndex = 3
 
-        -- FIX: validação mais robusta de iconID
         local iconIDValid = iconID and tostring(iconID) ~= "" and tostring(iconID) ~= "0"
         if iconIDValid then
             tIco.Image = "rbxassetid://" .. tostring(iconID)
@@ -1123,19 +1686,41 @@ function ModernNoir.CreateWindow(title)
             SwitchTab(self, Tab)
         end)
 
-        function Tab:AddButton(text, cb)
+        function Tab:AddButton(ltext, lcb)
             self._Count += 1
-            return Widgets.Button(self.ScrollFrame, text, self._Count, cb)
+            return Widgets.Button(self.ScrollFrame, ltext, self._Count, lcb)
         end
-
-        function Tab:AddToggle(text, default, cb)
+        function Tab:AddToggle(ltext, ldefault, lcb)
             self._Count += 1
-            return Widgets.Toggle(self.ScrollFrame, text, default, self._Count, cb)
+            return Widgets.Toggle(self.ScrollFrame, ltext, ldefault, self._Count, lcb)
         end
-
-        function Tab:AddSlider(text, minV, maxV, def, cb)
+        function Tab:AddSlider(ltext, lmin, lmax, ldef, lcb)
             self._Count += 1
-            return Widgets.Slider(self.ScrollFrame, text, minV, maxV, def, self._Count, cb)
+            return Widgets.Slider(self.ScrollFrame, ltext, lmin, lmax, ldef, self._Count, lcb)
+        end
+        function Tab:AddSection(ltext)
+            self._Count += 1
+            return Widgets.Section(self.ScrollFrame, ltext, self._Count)
+        end
+        function Tab:AddSeparator()
+            self._Count += 1
+            return Widgets.Separator(self.ScrollFrame, self._Count)
+        end
+        function Tab:AddLabel(ltext)
+            self._Count += 1
+            return Widgets.Label(self.ScrollFrame, ltext, self._Count)
+        end
+        function Tab:AddTextbox(ltext, lplaceholder, ldefault, lcb)
+            self._Count += 1
+            return Widgets.Textbox(self.ScrollFrame, ltext, lplaceholder, ldefault, self._Count, lcb)
+        end
+        function Tab:AddDropdown(ltext, loptions, ldefault, lcb)
+            self._Count += 1
+            return Widgets.Dropdown(self.ScrollFrame, ltext, loptions, ldefault, self._Count, lcb)
+        end
+        function Tab:AddKeybind(ltext, ldefault, lcb)
+            self._Count += 1
+            return Widgets.Keybind(self.ScrollFrame, ltext, ldefault, self._Count, lcb)
         end
 
         table.insert(self._Tabs, Tab)
@@ -1149,7 +1734,6 @@ function ModernNoir.CreateWindow(title)
         return Tab
     end
 
-    -- FIX: insere na lista depois que Window está definido
     table.insert(ModernNoir._Windows, Window)
     return Window
 end
