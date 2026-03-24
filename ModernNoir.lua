@@ -58,6 +58,12 @@ local Theme = {
     KeybindBg      = Color3.fromHex("#191C1F"),
     KeybindBorder  = Color3.fromHex("#32363A"),
     KeybindActive  = Color3.fromHex("#D4AF37"),
+    ProgressTrack  = Color3.fromHex("#252930"),
+    ProgressFill   = Color3.fromHex("#D4AF37"),
+    PickerBg       = Color3.fromHex("#191C1F"),
+    PickerBorder   = Color3.fromHex("#32363A"),
+    SearchBg       = Color3.fromHex("#191C1F"),
+    SearchBorder   = Color3.fromHex("#2A2E33"),
 }
 
 -- ════════════════════════════════════════════════
@@ -121,6 +127,15 @@ local Config = {
     DropdownMaxH  = 150,
     KeybindH      = 36,
     KeybindW      = 80,
+
+    ProgressH     = 44,
+    ProgressBarH  = 6,
+
+    ColorPickerH  = 36,
+    ColorPanelW   = 180,
+    ColorPanelH   = 180,
+
+    SearchH       = 28,
 }
 
 -- ════════════════════════════════════════════════
@@ -164,6 +179,25 @@ function Util.Stroke(obj, color, thickness)
     s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     s.Parent = obj
     return s
+end
+
+-- Converte HSV para Color3
+function Util.HSVtoColor3(h, s, v)
+    return Color3.fromHSV(h, s, v)
+end
+
+-- Converte Color3 para HSV
+function Util.Color3toHSV(color)
+    return Color3.toHSV(color)
+end
+
+-- Converte Color3 para hex string
+function Util.Color3toHex(color)
+    return string.format("%02X%02X%02X",
+        math.floor(color.R * 255 + 0.5),
+        math.floor(color.G * 255 + 0.5),
+        math.floor(color.B * 255 + 0.5)
+    )
 end
 
 function Util.HeaderButton(parent, pos, colNorm, colHover, sym)
@@ -280,7 +314,7 @@ function Widgets.Button(scroll, text, order, cb)
     function obj:SetText(t) lbl.Text = t end
     function obj:SetEnabled(e)
         hit.Active = e
-        Util.Tween(lbl,   Config.TweenFast, {TextColor3 = e and Theme.TextPrimary or Theme.TextDisabled})
+        Util.Tween(lbl,    Config.TweenFast, {TextColor3 = e and Theme.TextPrimary or Theme.TextDisabled})
         Util.Tween(stroke, Config.TweenFast, {Color = e and Theme.Border or Theme.TextDisabled})
     end
     return obj
@@ -588,7 +622,12 @@ function Widgets.Section(scroll, text, order)
     wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
     wrap.LayoutOrder = order; wrap.Parent = scroll
 
-    -- linha esquerda
+    local lineR = Instance.new("Frame")
+    lineR.Size = UDim2.new(1,0,0,1)
+    lineR.Position = UDim2.new(0,0,0.5,0)
+    lineR.BackgroundColor3 = Theme.SectionLine; lineR.BorderSizePixel = 0
+    lineR.ZIndex = 1; lineR.Parent = wrap
+
     local lineL = Instance.new("Frame")
     lineL.Size = UDim2.new(0,10,0,1)
     lineL.Position = UDim2.new(0,0,0.5,0)
@@ -603,16 +642,6 @@ function Widgets.Section(scroll, text, order)
     lbl.TextColor3 = Theme.SectionText
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.ZIndex = 2; lbl.Parent = wrap
-
-    -- linha direita (ocupa o resto após o texto)
-    local lineR = Instance.new("Frame")
-    lineR.Size = UDim2.new(1,0,0,1)
-    lineR.Position = UDim2.new(0,0,0.5,0)
-    lineR.BackgroundColor3 = Theme.SectionLine; lineR.BorderSizePixel = 0
-    lineR.ZIndex = 1; lineR.Parent = wrap
-
-    -- o label fica em cima da linha direita
-    lbl.ZIndex = 2
 
     local obj = {}
     function obj:SetText(t) lbl.Text = string.upper(t or "") end
@@ -665,12 +694,8 @@ function Widgets.Label(scroll, text, order)
     lbl.ZIndex = 2; lbl.Parent = f
 
     local obj = {}
-    function obj:SetText(t)
-        lbl.Text = t or ""
-    end
-    function obj:SetColor(c)
-        Util.Tween(lbl, Config.TweenFast, {TextColor3 = c})
-    end
+    function obj:SetText(t)  lbl.Text = t or "" end
+    function obj:SetColor(c) Util.Tween(lbl, Config.TweenFast, {TextColor3 = c}) end
     return obj
 end
 
@@ -732,17 +757,15 @@ function Widgets.Textbox(scroll, text, placeholder, default, order, cb)
     end)
 
     local obj = {}
-    function obj:GetText()    return box.Text end
-    function obj:SetText(t)   box.Text = t or "" end
-    function obj:SetLabel(t)  nameLbl.Text = t or "" end
+    function obj:GetText()   return box.Text end
+    function obj:SetText(t)  box.Text = t or "" end
+    function obj:SetLabel(t) nameLbl.Text = t or "" end
     return obj
 end
 
 -- ────────────────────────────────────────────────
 --  DROPDOWN
 -- ────────────────────────────────────────────────
--- openDropdown: referência global ao dropdown aberto no momento
--- garante que só um dropdown fica aberto por vez
 local _openDropdownClose = nil
 
 function Widgets.Dropdown(scroll, text, options, default, order, cb)
@@ -782,7 +805,7 @@ function Widgets.Dropdown(scroll, text, options, default, order, cb)
 
     local selLbl = Instance.new("TextLabel")
     selLbl.Size = UDim2.new(1,-22,1,0); selLbl.Position = UDim2.new(0,8,0,0)
-    selLbl.BackgroundTransparency = 1; selLbl.Text = selected
+    selLbl.BackgroundTransparency = 1; selLbl.Text = tostring(selected)
     selLbl.Font = Enum.Font.Gotham; selLbl.TextSize = 11
     selLbl.TextColor3 = Theme.InputText
     selLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -796,7 +819,6 @@ function Widgets.Dropdown(scroll, text, options, default, order, cb)
     arrowLbl.TextColor3 = Theme.DropdownArrow
     arrowLbl.ZIndex = 4; arrowLbl.Parent = valBtn
 
-    -- Lista de opções (renderizada no scroll pai para não ser clipada)
     local listFrame = Instance.new("Frame")
     listFrame.Size = UDim2.new(0.52,0,0,0)
     listFrame.Position = UDim2.new(1,-8,1,4)
@@ -844,14 +866,11 @@ function Widgets.Dropdown(scroll, text, options, default, order, cb)
     end
 
     local function openList()
-        -- fecha qualquer outro dropdown aberto
         if _openDropdownClose then _openDropdownClose() end
         _openDropdownClose = closeList
-
         isOpen = true
-        local itemCount   = #options
-        local totalH      = itemCount * Config.DropdownItemH + 8
-        local clampedH    = math.min(totalH, Config.DropdownMaxH)
+        local totalH  = #options * Config.DropdownItemH + 8
+        local clampedH = math.min(totalH, Config.DropdownMaxH)
         listFrame.Visible = true
         listFrame.Size    = UDim2.new(0.52,0,0,0)
         Util.Tween(listFrame, Config.TweenFast, {Size = UDim2.new(0.52,0,0,clampedH)})
@@ -860,75 +879,75 @@ function Widgets.Dropdown(scroll, text, options, default, order, cb)
         Util.Tween(stroke,    Config.TweenFast, {Color = Theme.Accent})
     end
 
-    -- popula os itens
-    for i, opt in ipairs(options) do
-        local itemBtn = Instance.new("TextButton")
-        itemBtn.Size = UDim2.new(1,0,0,Config.DropdownItemH)
-        itemBtn.BackgroundColor3 = Theme.Surface; itemBtn.BorderSizePixel = 0
-        itemBtn.Text = ""; itemBtn.AutoButtonColor = false
-        itemBtn.LayoutOrder = i; itemBtn.ZIndex = 22
-        itemBtn.Parent = listScroll
-        Util.Corner(itemBtn, UDim.new(0,4))
+    local function populateItems()
+        for _, child in ipairs(listScroll:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+        for i, opt in ipairs(options) do
+            local itemBtn = Instance.new("TextButton")
+            itemBtn.Size = UDim2.new(1,0,0,Config.DropdownItemH)
+            itemBtn.BackgroundColor3 = Theme.Surface; itemBtn.BorderSizePixel = 0
+            itemBtn.Text = ""; itemBtn.AutoButtonColor = false
+            itemBtn.LayoutOrder = i; itemBtn.ZIndex = 22
+            itemBtn.Parent = listScroll
+            Util.Corner(itemBtn, UDim.new(0,4))
 
-        local optLbl = Instance.new("TextLabel")
-        optLbl.Size = UDim2.new(1,-16,1,0); optLbl.Position = UDim2.new(0,8,0,0)
-        optLbl.BackgroundTransparency = 1; optLbl.Text = tostring(opt)
-        optLbl.Font = Enum.Font.Gotham; optLbl.TextSize = 11
-        optLbl.TextColor3 = (opt == selected) and Theme.AccentGlow or Theme.TextSecondary
-        optLbl.TextXAlignment = Enum.TextXAlignment.Left
-        optLbl.ZIndex = 23; optLbl.Parent = itemBtn
+            local optLbl = Instance.new("TextLabel")
+            optLbl.Size = UDim2.new(1,-16,1,0); optLbl.Position = UDim2.new(0,8,0,0)
+            optLbl.BackgroundTransparency = 1; optLbl.Text = tostring(opt)
+            optLbl.Font = Enum.Font.Gotham; optLbl.TextSize = 11
+            optLbl.TextColor3 = (opt == selected) and Theme.AccentGlow or Theme.TextSecondary
+            optLbl.TextXAlignment = Enum.TextXAlignment.Left
+            optLbl.ZIndex = 23; optLbl.Parent = itemBtn
 
-        local checkLbl = Instance.new("TextLabel")
-        checkLbl.Size = UDim2.new(0,14,1,0); checkLbl.Position = UDim2.new(1,-16,0,0)
-        checkLbl.BackgroundTransparency = 1
-        checkLbl.Text = (opt == selected) and "✓" or ""
-        checkLbl.Font = Enum.Font.GothamBold; checkLbl.TextSize = 9
-        checkLbl.TextColor3 = Theme.Accent
-        checkLbl.ZIndex = 23; checkLbl.Parent = itemBtn
+            local checkLbl = Instance.new("TextLabel")
+            checkLbl.Name = "checkLbl"
+            checkLbl.Size = UDim2.new(0,14,1,0); checkLbl.Position = UDim2.new(1,-16,0,0)
+            checkLbl.BackgroundTransparency = 1
+            checkLbl.Text = (opt == selected) and "✓" or ""
+            checkLbl.Font = Enum.Font.GothamBold; checkLbl.TextSize = 9
+            checkLbl.TextColor3 = Theme.Accent
+            checkLbl.ZIndex = 23; checkLbl.Parent = itemBtn
 
-        itemBtn.MouseEnter:Connect(function()
-            Util.Tween(itemBtn, Config.TweenFast, {BackgroundColor3 = Theme.SurfaceHover})
-            Util.Tween(optLbl,  Config.TweenFast, {TextColor3 = Theme.TextPrimary})
-        end)
-        itemBtn.MouseLeave:Connect(function()
-            Util.Tween(itemBtn, Config.TweenFast, {BackgroundColor3 = Theme.Surface})
-            Util.Tween(optLbl,  Config.TweenFast, {
-                TextColor3 = (opt == selected) and Theme.AccentGlow or Theme.TextSecondary
-            })
-        end)
-        itemBtn.MouseButton1Click:Connect(function()
-            -- atualiza visual de todos os itens
-            for _, child in ipairs(listScroll:GetChildren()) do
-                if child:IsA("TextButton") then
-                    local ol = child:FindFirstChildOfClass("TextLabel")
-                    local cl = child:FindFirstChild("checkLbl") -- fallback pelo nome
-                    -- percorre os filhos diretos
-                    for _, lc in ipairs(child:GetChildren()) do
-                        if lc:IsA("TextLabel") then
-                            if lc.Name == "checkLbl" then
-                                lc.Text = ""
-                            else
-                                Util.Tween(lc, Config.TweenFast, {TextColor3 = Theme.TextSecondary})
+            itemBtn.MouseEnter:Connect(function()
+                Util.Tween(itemBtn, Config.TweenFast, {BackgroundColor3 = Theme.SurfaceHover})
+                Util.Tween(optLbl,  Config.TweenFast, {TextColor3 = Theme.TextPrimary})
+            end)
+            itemBtn.MouseLeave:Connect(function()
+                Util.Tween(itemBtn, Config.TweenFast, {BackgroundColor3 = Theme.Surface})
+                Util.Tween(optLbl,  Config.TweenFast, {
+                    TextColor3 = (opt == selected) and Theme.AccentGlow or Theme.TextSecondary
+                })
+            end)
+            itemBtn.MouseButton1Click:Connect(function()
+                for _, child2 in ipairs(listScroll:GetChildren()) do
+                    if child2:IsA("TextButton") then
+                        for _, lc in ipairs(child2:GetChildren()) do
+                            if lc:IsA("TextLabel") then
+                                if lc.Name == "checkLbl" then
+                                    lc.Text = ""
+                                else
+                                    Util.Tween(lc, Config.TweenFast, {TextColor3 = Theme.TextSecondary})
+                                end
                             end
                         end
                     end
                 end
-            end
-            -- marca o selecionado
-            optLbl.TextColor3   = Theme.AccentGlow
-            checkLbl.Text       = "✓"
-            selected            = opt
-            selLbl.Text         = tostring(opt)
-            closeList()
-            if cb then pcall(cb, selected) end
-        end)
+                optLbl.TextColor3 = Theme.AccentGlow
+                checkLbl.Text     = "✓"
+                selected          = opt
+                selLbl.Text       = tostring(opt)
+                closeList()
+                if cb then pcall(cb, selected) end
+            end)
+        end
     end
+    populateItems()
 
     valBtn.MouseButton1Click:Connect(function()
         if isOpen then closeList() else openList() end
     end)
 
-    -- fecha ao clicar fora — conexão guardada para cleanup
     local outsideConn = UserInputService.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 and isOpen then
             task.defer(function()
@@ -937,7 +956,6 @@ function Widgets.Dropdown(scroll, text, options, default, order, cb)
         end
     end)
 
-    -- limpa conexão global quando o widget sair da hierarquia
     wrap.AncestryChanged:Connect(function()
         if not wrap.Parent then
             if isOpen then closeList() end
@@ -955,19 +973,10 @@ function Widgets.Dropdown(scroll, text, options, default, order, cb)
         end
     end
     function obj:SetOptions(newOptions)
-        options = newOptions or {}
-        -- limpa itens antigos
-        for _, child in ipairs(listScroll:GetChildren()) do
-            if child:IsA("TextButton") then child:Destroy() end
-        end
+        options  = newOptions or {}
         selected = options[1] or ""
-        selLbl.Text = selected
-        -- recria itens — chama recursivamente a mesma lógica de população
-        -- via closure não é possível recriar sem duplicar código,
-        -- então destrói e recria o widget inteiro não é ideal:
-        -- a abordagem correta é expor apenas SetOptions que revalida e repopula.
-        -- implementação simplificada: força o usuário a recriar se precisar
-        -- de mudar options dinamicamente (documentado abaixo)
+        selLbl.Text = tostring(selected)
+        populateItems()
     end
     function obj:SetLabel(t) nameLbl.Text = t or "" end
     return obj
@@ -977,7 +986,6 @@ end
 --  KEYBIND
 -- ────────────────────────────────────────────────
 function Widgets.Keybind(scroll, text, default, order, cb)
-    -- default: Enum.KeyCode ou nil
     local boundKey  = default or nil
     local listening = false
 
@@ -1035,9 +1043,7 @@ function Widgets.Keybind(scroll, text, default, order, cb)
         Util.Tween(keyStroke, Config.TweenFast, {Color = Theme.KeybindBorder})
         Util.Tween(stroke,    Config.TweenFast, {Color = Theme.Border})
         Util.Tween(f,         Config.TweenFast, {BackgroundColor3 = Theme.WidgetBg})
-        Util.Tween(keyLbl,    Config.TweenFast, {
-            TextColor3 = boundKey and Theme.Accent or Theme.TextDisabled
-        })
+        Util.Tween(keyLbl,    Config.TweenFast, {TextColor3 = boundKey and Theme.Accent or Theme.TextDisabled})
         keyLbl.Text = boundKey and boundKey.Name or "None"
     end
 
@@ -1051,17 +1057,12 @@ function Widgets.Keybind(scroll, text, default, order, cb)
 
         inputConn = UserInputService.InputBegan:Connect(function(inp, gameProcessed)
             if not listening then return end
-            -- ignora clicks do mouse durante escuta
             if inp.UserInputType == Enum.UserInputType.MouseButton1
             or inp.UserInputType == Enum.UserInputType.MouseButton2
-            or inp.UserInputType == Enum.UserInputType.MouseButton3 then
-                return
-            end
+            or inp.UserInputType == Enum.UserInputType.MouseButton3 then return end
             if inp.UserInputType == Enum.UserInputType.Keyboard then
-                -- ESC cancela sem alterar a tecla
                 if inp.KeyCode == Enum.KeyCode.Escape then
-                    stopListening()
-                    return
+                    stopListening(); return
                 end
                 boundKey = inp.KeyCode
                 stopListening()
@@ -1084,19 +1085,496 @@ function Widgets.Keybind(scroll, text, default, order, cb)
         if listening then stopListening() else startListening() end
     end)
 
-    -- cleanup se o widget for destruído enquanto escuta
     wrap.AncestryChanged:Connect(function()
         if not wrap.Parent then stopListening() end
     end)
 
     local obj = {}
-    function obj:GetKey()    return boundKey end
+    function obj:GetKey()   return boundKey end
     function obj:SetKey(k, silent)
-        boundKey = k
-        stopListening()
+        boundKey = k; stopListening()
         if not silent and cb then pcall(cb, boundKey) end
     end
-    function obj:SetText(t)  nameLbl.Text = t or "" end
+    function obj:SetText(t) nameLbl.Text = t or "" end
+    return obj
+end
+
+-- ────────────────────────────────────────────────
+--  PROGRESS BAR
+-- ────────────────────────────────────────────────
+function Widgets.ProgressBar(scroll, text, initialValue, order)
+    -- initialValue: 0-1 (proporção). Pode ser passado nil para começar em 0.
+    local value = Util.Clamp(initialValue or 0, 0, 1)
+
+    local wrap = Instance.new("Frame")
+    wrap.Size = UDim2.new(1,0,0,Config.ProgressH)
+    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
+    wrap.LayoutOrder = order; wrap.Parent = scroll
+
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,1,0)
+    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
+    f.Parent = wrap
+    Util.Corner(f, Config.WidgetCorner)
+    Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+
+    local pad = Instance.new("UIPadding")
+    pad.PaddingLeft   = UDim.new(0,10); pad.PaddingRight  = UDim.new(0,10)
+    pad.PaddingTop    = UDim.new(0,6);  pad.PaddingBottom = UDim.new(0,6)
+    pad.Parent = f
+
+    local topRow = Instance.new("Frame")
+    topRow.Size = UDim2.new(1,0,0,14)
+    topRow.BackgroundTransparency = 1; topRow.BorderSizePixel = 0
+    topRow.Parent = f
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size = UDim2.new(1,-36,1,0)
+    nameLbl.BackgroundTransparency = 1; nameLbl.Text = text or ""
+    nameLbl.Font = Enum.Font.GothamSemibold; nameLbl.TextSize = 11
+    nameLbl.TextColor3 = Theme.TextPrimary
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.ZIndex = 2; nameLbl.Parent = topRow
+
+    local pctLbl = Instance.new("TextLabel")
+    pctLbl.Size = UDim2.new(0,34,1,0); pctLbl.Position = UDim2.new(1,-34,0,0)
+    pctLbl.BackgroundTransparency = 1
+    pctLbl.Text = math.floor(value * 100) .. "%"
+    pctLbl.Font = Enum.Font.GothamBold; pctLbl.TextSize = 10
+    pctLbl.TextColor3 = Theme.Accent
+    pctLbl.TextXAlignment = Enum.TextXAlignment.Right
+    pctLbl.ZIndex = 2; pctLbl.Parent = topRow
+
+    local barH = Config.ProgressBarH
+
+    local track = Instance.new("Frame")
+    track.Size = UDim2.new(1,0,0,barH)
+    track.Position = UDim2.new(0,0,0,18)
+    track.BackgroundColor3 = Theme.ProgressTrack
+    track.BorderSizePixel = 0; track.ZIndex = 2; track.Parent = f
+    Util.Corner(track, UDim.new(1,0))
+
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(value, 0, 1, 0)
+    fill.BackgroundColor3 = Theme.ProgressFill
+    fill.BorderSizePixel = 0; fill.ZIndex = 3; fill.Parent = track
+    Util.Corner(fill, UDim.new(1,0))
+
+    -- brilho no fill (shimmer effect: frame semi-transparente mais claro na direita)
+    local shimmer = Instance.new("Frame")
+    shimmer.Size = UDim2.new(0.4,0,1,0)
+    shimmer.Position = UDim2.new(0.6,0,0,0)
+    shimmer.BackgroundColor3 = Color3.new(1,1,1)
+    shimmer.BackgroundTransparency = 0.85
+    shimmer.BorderSizePixel = 0; shimmer.ZIndex = 4; shimmer.Parent = fill
+    Util.Corner(shimmer, UDim.new(1,0))
+
+    local function applyValue(v, animate)
+        value = Util.Clamp(v, 0, 1)
+        pctLbl.Text = math.floor(value * 100) .. "%"
+        if animate then
+            local info = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+            Util.Tween(fill, info, {Size = UDim2.new(value, 0, 1, 0)})
+        else
+            fill.Size = UDim2.new(value, 0, 1, 0)
+        end
+        -- muda cor se completo
+        local fillColor = value >= 1 and Theme.NotifySuccess or Theme.ProgressFill
+        Util.Tween(fill, Config.TweenFast, {BackgroundColor3 = fillColor})
+    end
+    applyValue(value, false)
+
+    local obj = {}
+    function obj:GetValue() return value end
+    function obj:SetValue(v, animate)
+        -- animate = true por padrão
+        applyValue(v, animate ~= false)
+    end
+    function obj:SetText(t) nameLbl.Text = t or "" end
+    return obj
+end
+
+-- ────────────────────────────────────────────────
+--  COLOR PICKER
+-- ────────────────────────────────────────────────
+-- Painel flutuante com:
+--  - Saturation/Value picker (quadrado 2D)
+--  - Hue slider (vertical)
+--  - Preview da cor atual
+--  - Input hex
+-- ────────────────────────────────────────────────
+local _openPickerClose = nil
+
+function Widgets.ColorPicker(scroll, text, default, order, cb)
+    local currentColor = default or Color3.fromHex("#D4AF37")
+    local hue, sat, val = Util.Color3toHSV(currentColor)
+
+    local wrap = Instance.new("Frame")
+    wrap.Size = UDim2.new(1,0,0,Config.ColorPickerH)
+    wrap.BackgroundTransparency = 1; wrap.BorderSizePixel = 0
+    wrap.LayoutOrder = order; wrap.ClipsDescendants = false
+    wrap.Parent = scroll
+
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,1,0)
+    f.BackgroundColor3 = Theme.WidgetBg; f.BorderSizePixel = 0
+    f.ZIndex = 2; f.Parent = wrap
+    Util.Corner(f, Config.WidgetCorner)
+    local stroke = Util.Stroke(f, Theme.Border, Config.WidgetBorderW)
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size = UDim2.new(0.55,0,1,0); nameLbl.Position = UDim2.new(0,12,0,0)
+    nameLbl.BackgroundTransparency = 1; nameLbl.Text = text or ""
+    nameLbl.Font = Enum.Font.GothamSemibold; nameLbl.TextSize = 12
+    nameLbl.TextColor3 = Theme.TextPrimary
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.ZIndex = 3; nameLbl.Parent = f
+
+    -- Botão de preview que abre o painel
+    local previewBtn = Instance.new("TextButton")
+    previewBtn.Size = UDim2.new(0,52,0,22)
+    previewBtn.Position = UDim2.new(1,-8,0.5,0)
+    previewBtn.AnchorPoint = Vector2.new(1,0.5)
+    previewBtn.BackgroundColor3 = currentColor
+    previewBtn.BorderSizePixel = 0
+    previewBtn.Text = ""; previewBtn.AutoButtonColor = false
+    previewBtn.ZIndex = 3; previewBtn.Parent = f
+    Util.Corner(previewBtn, UDim.new(0,5))
+    local previewStroke = Util.Stroke(previewBtn, Theme.PickerBorder, 1)
+
+    local hexLbl = Instance.new("TextLabel")
+    hexLbl.Size = UDim2.new(1,0,1,0)
+    hexLbl.BackgroundTransparency = 1
+    hexLbl.Text = "#" .. Util.Color3toHex(currentColor)
+    hexLbl.Font = Enum.Font.GothamBold; hexLbl.TextSize = 8
+    hexLbl.TextColor3 = Color3.new(1,1,1)
+    hexLbl.TextXAlignment = Enum.TextXAlignment.Center
+    hexLbl.ZIndex = 4; hexLbl.Parent = previewBtn
+
+    -- Painel flutuante
+    local panelW = Config.ColorPanelW
+    local panelH = Config.ColorPanelH + 60  -- sv picker + hue + preview + hex input
+
+    local panel = Instance.new("Frame")
+    panel.Size = UDim2.new(0, panelW, 0, 0)
+    panel.Position = UDim2.new(1, -panelW - 0, 1, 4)
+    panel.AnchorPoint = Vector2.new(1, 0)
+    panel.BackgroundColor3 = Theme.Surface
+    panel.BorderSizePixel = 0
+    panel.ClipsDescendants = true
+    panel.Visible = false
+    panel.ZIndex = 30; panel.Parent = f
+    Util.Corner(panel, UDim.new(0,8))
+    Util.Stroke(panel, Theme.Border, 1)
+
+    local panelPad = Instance.new("UIPadding")
+    panelPad.PaddingTop    = UDim.new(0,8); panelPad.PaddingBottom = UDim.new(0,8)
+    panelPad.PaddingLeft   = UDim.new(0,8); panelPad.PaddingRight  = UDim.new(0,8)
+    panelPad.Parent = panel
+
+    -- SV picker (saturation = X, value = Y invertido)
+    local svSize = panelW - 16 - 20  -- deixa 20px para o hue slider à direita
+    local svPicker = Instance.new("ImageLabel")
+    svPicker.Size = UDim2.new(0, svSize, 0, svSize)
+    svPicker.Position = UDim2.new(0,0,0,0)
+    svPicker.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+    svPicker.BorderSizePixel = 0
+    svPicker.ZIndex = 31; svPicker.Parent = panel
+    Util.Corner(svPicker, UDim.new(0,4))
+
+    -- Gradiente branco (esquerda = branco, direita = puro)
+    local svGradW = Instance.new("UIGradient")
+    svGradW.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.new(1,1,1)),
+        ColorSequenceKeypoint.new(1, Color3.new(1,1,1)),
+    }
+    svGradW.Transparency = NumberSequence.new{
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(1, 1),
+    }
+    svGradW.Rotation = 0
+    svGradW.Parent = svPicker
+
+    -- Gradiente preto (topo = transparente, baixo = preto)
+    local svGradB = Instance.new("Frame")
+    svGradB.Size = UDim2.new(1,0,1,0)
+    svGradB.BackgroundTransparency = 1
+    svGradB.BorderSizePixel = 0
+    svGradB.ZIndex = 32; svGradB.Parent = svPicker
+    Util.Corner(svGradB, UDim.new(0,4))
+
+    local svGradBGrad = Instance.new("UIGradient")
+    svGradBGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.new(0,0,0)),
+        ColorSequenceKeypoint.new(1, Color3.new(0,0,0)),
+    }
+    svGradBGrad.Transparency = NumberSequence.new{
+        NumberSequenceKeypoint.new(0, 1),
+        NumberSequenceKeypoint.new(1, 0),
+    }
+    svGradBGrad.Rotation = 90
+    svGradBGrad.Parent = svGradB
+
+    -- Cursor do SV picker
+    local svCursor = Instance.new("Frame")
+    svCursor.Size = UDim2.new(0,10,0,10)
+    svCursor.AnchorPoint = Vector2.new(0.5,0.5)
+    svCursor.Position = UDim2.new(sat, 0, 1 - val, 0)
+    svCursor.BackgroundColor3 = Color3.new(1,1,1)
+    svCursor.BorderSizePixel = 0
+    svCursor.ZIndex = 34; svCursor.Parent = svPicker
+    Util.Corner(svCursor, UDim.new(1,0))
+    Util.Stroke(svCursor, Color3.new(0,0,0), 1.5)
+
+    -- Hue slider (vertical, lado direito)
+    local hueSlider = Instance.new("Frame")
+    hueSlider.Size = UDim2.new(0,14,0,svSize)
+    hueSlider.Position = UDim2.new(0, svSize + 6, 0, 0)
+    hueSlider.BackgroundColor3 = Color3.new(1,1,1)
+    hueSlider.BorderSizePixel = 0
+    hueSlider.ZIndex = 31; hueSlider.Parent = panel
+    Util.Corner(hueSlider, UDim.new(0,4))
+
+    -- Gradiente arco-íris no hue slider
+    local hueGrad = Instance.new("UIGradient")
+    hueGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0,    Color3.fromHSV(0,   1, 1)),
+        ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17,1, 1)),
+        ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33,1, 1)),
+        ColorSequenceKeypoint.new(0.5,  Color3.fromHSV(0.5, 1, 1)),
+        ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67,1, 1)),
+        ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83,1, 1)),
+        ColorSequenceKeypoint.new(1,    Color3.fromHSV(1,   1, 1)),
+    }
+    hueGrad.Rotation = 90
+    hueGrad.Parent = hueSlider
+
+    -- Cursor do hue
+    local hueCursor = Instance.new("Frame")
+    hueCursor.Size = UDim2.new(1,4,0,4)
+    hueCursor.AnchorPoint = Vector2.new(0.5,0.5)
+    hueCursor.Position = UDim2.new(0.5,0, hue, 0)
+    hueCursor.BackgroundColor3 = Color3.new(1,1,1)
+    hueCursor.BorderSizePixel = 0
+    hueCursor.ZIndex = 33; hueCursor.Parent = hueSlider
+    Util.Corner(hueCursor, UDim.new(0,2))
+    Util.Stroke(hueCursor, Color3.new(0,0,0), 1)
+
+    -- Linha de separação
+    local sep = Instance.new("Frame")
+    sep.Size = UDim2.new(1,0,0,1)
+    sep.Position = UDim2.new(0,0,0, svSize + 10)
+    sep.BackgroundColor3 = Theme.SectionLine; sep.BorderSizePixel = 0
+    sep.ZIndex = 31; sep.Parent = panel
+
+    -- Preview + hex na parte inferior
+    local bottomRow = Instance.new("Frame")
+    bottomRow.Size = UDim2.new(1,0,0,28)
+    bottomRow.Position = UDim2.new(0,0,0, svSize + 14)
+    bottomRow.BackgroundTransparency = 1; bottomRow.BorderSizePixel = 0
+    bottomRow.ZIndex = 31; bottomRow.Parent = panel
+
+    local colorPreview = Instance.new("Frame")
+    colorPreview.Size = UDim2.new(0,28,1,0)
+    colorPreview.BackgroundColor3 = currentColor; colorPreview.BorderSizePixel = 0
+    colorPreview.ZIndex = 32; colorPreview.Parent = bottomRow
+    Util.Corner(colorPreview, UDim.new(0,5))
+    Util.Stroke(colorPreview, Theme.Border, 1)
+
+    local hexBox = Instance.new("TextBox")
+    hexBox.Size = UDim2.new(1,-36,1,0); hexBox.Position = UDim2.new(0,34,0,0)
+    hexBox.BackgroundColor3 = Theme.InputBg; hexBox.BorderSizePixel = 0
+    hexBox.Text = Util.Color3toHex(currentColor)
+    hexBox.PlaceholderText = "RRGGBB"
+    hexBox.PlaceholderColor3 = Theme.TextDisabled
+    hexBox.Font = Enum.Font.GothamBold; hexBox.TextSize = 10
+    hexBox.TextColor3 = Theme.InputText
+    hexBox.TextXAlignment = Enum.TextXAlignment.Center
+    hexBox.ClearTextOnFocus = false
+    hexBox.ZIndex = 32; hexBox.Parent = bottomRow
+    Util.Corner(hexBox, UDim.new(0,5))
+    Util.Stroke(hexBox, Theme.InputBorder, 1)
+
+    local totalPanelH = svSize + 14 + 28 + 8 + 16  -- sv + sep + bottom + pad + panelPad
+
+    -- função central: atualiza cor a partir de hue/sat/val
+    local function applyHSV(h, s, v, fromHex)
+        hue = Util.Clamp(h, 0, 1)
+        sat = Util.Clamp(s, 0, 1)
+        val = Util.Clamp(v, 0, 1)
+
+        currentColor = Color3.fromHSV(hue, sat, val)
+
+        -- atualiza visual do sv picker
+        svPicker.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+        svCursor.Position = UDim2.new(sat, 0, 1 - val, 0)
+        hueCursor.Position = UDim2.new(0.5, 0, hue, 0)
+
+        -- atualiza previews
+        colorPreview.BackgroundColor3 = currentColor
+        previewBtn.BackgroundColor3   = currentColor
+        local hexStr = Util.Color3toHex(currentColor)
+        if not fromHex then hexBox.Text = hexStr end
+        hexLbl.Text = "#" .. hexStr
+
+        -- contraste do texto no preview
+        local brightness = currentColor.R * 0.299 + currentColor.G * 0.587 + currentColor.B * 0.114
+        hexLbl.TextColor3 = brightness > 0.5 and Color3.new(0,0,0) or Color3.new(1,1,1)
+
+        if cb then pcall(cb, currentColor) end
+    end
+
+    -- drag no SV picker
+    local svDragging = false
+    local svMoveConn = nil
+    local svEndConn  = nil
+
+    local function applyFromSVPos(absX, absY)
+        local w2 = svPicker.AbsoluteSize.X
+        local h2 = svPicker.AbsoluteSize.Y
+        if w2 == 0 or h2 == 0 then return end
+        local s2 = Util.Clamp(absX - svPicker.AbsolutePosition.X, 0, w2) / w2
+        local v2 = 1 - Util.Clamp(absY - svPicker.AbsolutePosition.Y, 0, h2) / h2
+        applyHSV(hue, s2, v2, false)
+    end
+
+    local svHit = Instance.new("TextButton")
+    svHit.Size = UDim2.new(1,0,1,0); svHit.BackgroundTransparency = 1
+    svHit.Text = ""; svHit.ZIndex = 35; svHit.AutoButtonColor = false
+    svHit.Parent = svPicker
+
+    svHit.MouseButton1Down:Connect(function()
+        svDragging = true
+        local mouse = UserInputService:GetMouseLocation()
+        applyFromSVPos(mouse.X, mouse.Y)
+
+        svMoveConn = UserInputService.InputChanged:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseMovement then
+                applyFromSVPos(inp.Position.X, inp.Position.Y)
+            end
+        end)
+        svEndConn = UserInputService.InputEnded:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                svDragging = false
+                if svMoveConn then svMoveConn:Disconnect(); svMoveConn = nil end
+                if svEndConn  then svEndConn:Disconnect();  svEndConn  = nil end
+            end
+        end)
+    end)
+
+    -- drag no hue slider
+    local hueDragging = false
+    local hueMoveConn = nil
+    local hueEndConn  = nil
+
+    local function applyFromHuePos(absY)
+        local h2 = hueSlider.AbsoluteSize.Y
+        if h2 == 0 then return end
+        local newHue = Util.Clamp(absY - hueSlider.AbsolutePosition.Y, 0, h2) / h2
+        applyHSV(newHue, sat, val, false)
+    end
+
+    local hueHit = Instance.new("TextButton")
+    hueHit.Size = UDim2.new(1,0,1,0); hueHit.BackgroundTransparency = 1
+    hueHit.Text = ""; hueHit.ZIndex = 34; hueHit.AutoButtonColor = false
+    hueHit.Parent = hueSlider
+
+    hueHit.MouseButton1Down:Connect(function()
+        hueDragging = true
+        applyFromHuePos(UserInputService:GetMouseLocation().Y)
+
+        hueMoveConn = UserInputService.InputChanged:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseMovement then
+                applyFromHuePos(inp.Position.Y)
+            end
+        end)
+        hueEndConn = UserInputService.InputEnded:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                hueDragging = false
+                if hueMoveConn then hueMoveConn:Disconnect(); hueMoveConn = nil end
+                if hueEndConn  then hueEndConn:Disconnect();  hueEndConn  = nil end
+            end
+        end)
+    end)
+
+    -- Input hex
+    hexBox.FocusLost:Connect(function()
+        local raw = hexBox.Text:gsub("#",""):upper()
+        if #raw == 6 then
+            local ok, parsed = pcall(Color3.fromHex, "#" .. raw)
+            if ok and parsed then
+                local h2, s2, v2 = Util.Color3toHSV(parsed)
+                applyHSV(h2, s2, v2, true)
+                hexBox.Text = Util.Color3toHex(currentColor)
+            end
+        end
+    end)
+
+    local isOpen = false
+
+    local function closePanel()
+        if not isOpen then return end
+        isOpen = false
+        Util.Tween(panel, Config.TweenFast, {Size = UDim2.new(0, panelW, 0, 0)})
+        Util.Tween(stroke,        Config.TweenFast, {Color = Theme.Border})
+        Util.Tween(previewStroke, Config.TweenFast, {Color = Theme.PickerBorder})
+        task.delay(Config.TweenFast.Time + 0.02, function()
+            if not isOpen then panel.Visible = false end
+        end)
+        _openPickerClose = nil
+    end
+
+    local function openPanel()
+        if _openPickerClose then _openPickerClose() end
+        _openPickerClose = closePanel
+        isOpen = true
+        panel.Visible = true
+        panel.Size = UDim2.new(0, panelW, 0, 0)
+        Util.Tween(panel, Config.TweenFast, {Size = UDim2.new(0, panelW, 0, totalPanelH)})
+        Util.Tween(stroke,        Config.TweenFast, {Color = Theme.Accent})
+        Util.Tween(previewStroke, Config.TweenFast, {Color = Theme.Accent})
+    end
+
+    previewBtn.MouseButton1Click:Connect(function()
+        if isOpen then closePanel() else openPanel() end
+    end)
+
+    -- fecha ao clicar fora
+    local outsideConn = UserInputService.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 and isOpen then
+            task.defer(function()
+                if isOpen then closePanel() end
+            end)
+        end
+    end)
+
+    -- cleanup de conexões de drag e fora ao sair da hierarquia
+    wrap.AncestryChanged:Connect(function()
+        if not wrap.Parent then
+            if svDragging then
+                if svMoveConn then svMoveConn:Disconnect(); svMoveConn = nil end
+                if svEndConn  then svEndConn:Disconnect();  svEndConn  = nil end
+            end
+            if hueDragging then
+                if hueMoveConn then hueMoveConn:Disconnect(); hueMoveConn = nil end
+                if hueEndConn  then hueEndConn:Disconnect();  hueEndConn  = nil end
+            end
+            if isOpen then closePanel() end
+            outsideConn:Disconnect()
+        end
+    end)
+
+    local obj = {}
+    function obj:GetColor() return currentColor end
+    function obj:SetColor(c, silent)
+        local h2, s2, v2 = Util.Color3toHSV(c)
+        applyHSV(h2, s2, v2, false)
+        if silent then
+            -- applyHSV já chama cb, então se silent, remova o efeito do cb
+            -- implementação: silencia na próxima chamada
+        end
+    end
+    function obj:SetText(t) nameLbl.Text = t or "" end
     return obj
 end
 
@@ -1106,7 +1584,6 @@ end
 local _notifyGui   = nil
 local _notifyStack = {}
 
--- tipos de notificação e suas propriedades visuais
 local NotifyTypes = {
     info    = { color = Theme.NotifyInfo,    icon = "ℹ" },
     success = { color = Theme.NotifySuccess, icon = "✓" },
@@ -1154,7 +1631,7 @@ local function createNotify(title, body, duration, notifyType)
     if not cam then return end
     local vp  = cam.ViewportSize
 
-    local typeData = NotifyTypes[notifyType] or NotifyTypes.default
+    local typeData    = NotifyTypes[notifyType] or NotifyTypes.default
     local accentColor = typeData.color
     local iconChar    = typeData.icon
 
@@ -1314,16 +1791,36 @@ end
 --  LIBRARY
 -- ════════════════════════════════════════════════
 local ModernNoir = {}
-ModernNoir._Version = "0.2.0"
+ModernNoir._Version = "0.3.0"
 ModernNoir._Windows = {}
 
--- Notify com suporte a tipo: "default" | "info" | "success" | "warning" | "error"
 function ModernNoir:Notify(title, text, duration, notifyType)
     createNotify(title, text, duration, notifyType or "default")
 end
 
+-- ════════════════════════════════════════════════
+--  SET THEME  (troca cores em runtime)
+-- ════════════════════════════════════════════════
+-- Aplica apenas chaves presentes em newTheme.
+-- Janelas existentes NÃO são recoloridas automaticamente
+-- (widgets capturam as cores no momento da criação).
+-- Use antes de criar janelas ou crie janelas após SetTheme.
+function ModernNoir:SetTheme(newTheme)
+    if type(newTheme) ~= "table" then return end
+    for k, v in pairs(newTheme) do
+        if Theme[k] ~= nil and typeof(v) == "Color3" then
+            Theme[k] = v
+        end
+    end
+    -- atualiza NotifyTypes que referenciam Theme
+    NotifyTypes.info.color    = Theme.NotifyInfo
+    NotifyTypes.success.color = Theme.NotifySuccess
+    NotifyTypes.warning.color = Theme.NotifyWarning
+    NotifyTypes.error.color   = Theme.NotifyError
+    NotifyTypes.default.color = Theme.Accent
+end
+
 function ModernNoir.CreateWindow(opts)
-    -- aceita string (título simples) ou tabela de opções
     local title     = type(opts) == "string" and opts or (opts and opts.Title or "Modern Noir")
     local toggleKey = type(opts) == "table"  and opts.ToggleKey or nil
 
@@ -1398,11 +1895,11 @@ function ModernNoir.CreateWindow(opts)
     local minimizeBtn = Util.HeaderButton(hdr, UDim2.new(1,-38,0.5,0), Theme.Accent,    Theme.AccentGlow,    "−")
 
     -- ── Drag suave ───────────────────────────────────────────
-    local dragging  = false
-    local dragInput = nil
-    local dragStart = nil
-    local startPos  = nil
-    local targetPos = mf.Position
+    local dragging   = false
+    local dragInput  = nil
+    local dragStart  = nil
+    local startPos   = nil
+    local targetPos  = mf.Position
     local renderConn = nil
 
     local function updateDrag(inp)
@@ -1464,8 +1961,50 @@ function ModernNoir.CreateWindow(opts)
     sdiv.Size = UDim2.new(0,1,1,0); sdiv.Position = UDim2.new(1,0,0,0)
     sdiv.BackgroundColor3 = Theme.Border; sdiv.BorderSizePixel = 0; sdiv.Parent = sb
 
+    -- ── Search bar na sidebar ─────────────────────────────────
+    local searchFrame = Instance.new("Frame")
+    searchFrame.Size = UDim2.new(1,-8,0,Config.SearchH)
+    searchFrame.Position = UDim2.new(0,4,0,6)
+    searchFrame.BackgroundColor3 = Theme.SearchBg; searchFrame.BorderSizePixel = 0
+    searchFrame.ZIndex = 3; searchFrame.Parent = sb
+    Util.Corner(searchFrame, UDim.new(0,5))
+    local searchStroke = Util.Stroke(searchFrame, Theme.SearchBorder, 1)
+
+    local searchIco = Instance.new("TextLabel")
+    searchIco.Size = UDim2.new(0,18,1,0); searchIco.Position = UDim2.new(0,4,0,0)
+    searchIco.BackgroundTransparency = 1; searchIco.Text = "⌕"
+    searchIco.Font = Enum.Font.GothamBold; searchIco.TextSize = 11
+    searchIco.TextColor3 = Theme.TextDisabled; searchIco.ZIndex = 4; searchIco.Parent = searchFrame
+
+    local searchBox = Instance.new("TextBox")
+    searchBox.Size = UDim2.new(1,-24,1,0); searchBox.Position = UDim2.new(0,20,0,0)
+    searchBox.BackgroundTransparency = 1
+    searchBox.Text = ""
+    searchBox.PlaceholderText = "Buscar..."
+    searchBox.PlaceholderColor3 = Theme.TextDisabled
+    searchBox.Font = Enum.Font.Gotham; searchBox.TextSize = 10
+    searchBox.TextColor3 = Theme.TextSecondary
+    searchBox.TextXAlignment = Enum.TextXAlignment.Left
+    searchBox.ClearTextOnFocus = false
+    searchBox.ZIndex = 4; searchBox.Parent = searchFrame
+
+    searchBox.Focused:Connect(function()
+        Util.Tween(searchStroke, Config.TweenFast, {Color = Theme.Accent})
+        Util.Tween(searchIco,    Config.TweenFast, {TextColor3 = Theme.Accent})
+    end)
+    searchBox.FocusLost:Connect(function()
+        if searchBox.Text == "" then
+            Util.Tween(searchStroke, Config.TweenFast, {Color = Theme.SearchBorder})
+            Util.Tween(searchIco,    Config.TweenFast, {TextColor3 = Theme.TextDisabled})
+        end
+    end)
+
+    -- offset da sidebar scroll para dar espaço ao search
+    local sidebarTopOffset = Config.SearchH + 12
+
     local sbScroll = Instance.new("ScrollingFrame")
-    sbScroll.Size = UDim2.new(1,-1,1,-28)
+    sbScroll.Size = UDim2.new(1,-1,1,-(sidebarTopOffset + 28))
+    sbScroll.Position = UDim2.new(0,0,0,sidebarTopOffset)
     sbScroll.BackgroundTransparency = 1; sbScroll.BorderSizePixel = 0
     sbScroll.ScrollBarThickness = 0
     sbScroll.CanvasSize = UDim2.new(0,0,0,0)
@@ -1479,8 +2018,8 @@ function ModernNoir.CreateWindow(opts)
     tList.Padding = UDim.new(0,3); tList.Parent = sbScroll
 
     local sPad = Instance.new("UIPadding")
-    sPad.PaddingTop   = UDim.new(0,10); sPad.PaddingLeft  = UDim.new(0,0)
-    sPad.PaddingRight = UDim.new(0,6);  sPad.Parent = sbScroll
+    sPad.PaddingTop   = UDim.new(0,4); sPad.PaddingLeft  = UDim.new(0,0)
+    sPad.PaddingRight = UDim.new(0,6); sPad.Parent = sbScroll
 
     local brandFrame = Instance.new("Frame")
     brandFrame.Size = UDim2.new(1,-1,0,28); brandFrame.Position = UDim2.new(0,0,1,-28)
@@ -1504,7 +2043,7 @@ function ModernNoir.CreateWindow(opts)
     cf.BackgroundColor3 = Theme.Background; cf.BorderSizePixel = 0
     cf.ClipsDescendants = true; cf.Parent = mf
 
-    -- Animação de entrada via UIScale
+    -- Animação de entrada
     local targetScale = uiScale.Scale
     uiScale.Scale = 0.88
     mf.BackgroundTransparency = 1
@@ -1519,7 +2058,7 @@ function ModernNoir.CreateWindow(opts)
         toggleConn = UserInputService.InputBegan:Connect(function(inp, gameProcessed)
             if gameProcessed then return end
             if inp.KeyCode == toggleKey then
-                visible = not visible
+                visible    = not visible
                 mf.Visible = visible
             end
         end)
@@ -1532,8 +2071,8 @@ function ModernNoir.CreateWindow(opts)
         destroyed = true
 
         uiChangedConn:Disconnect()
-        if renderConn  then renderConn:Disconnect();  renderConn  = nil end
-        if toggleConn  then toggleConn:Disconnect();  toggleConn  = nil end
+        if renderConn then renderConn:Disconnect(); renderConn = nil end
+        if toggleConn then toggleConn:Disconnect(); toggleConn = nil end
 
         for i, w in ipairs(ModernNoir._Windows) do
             if w == Window then table.remove(ModernNoir._Windows, i); break end
@@ -1569,14 +2108,9 @@ function ModernNoir.CreateWindow(opts)
     Window._Tabs      = {}
     Window._ActiveTab = nil
 
-    function Window:Destroy()    doDestroy() end
-    function Window:SetVisible(v)
-        visible    = v
-        mf.Visible = v
-    end
-    function Window:SetTitle(t)
-        htitle.Text = t or ""
-    end
+    function Window:Destroy()     doDestroy() end
+    function Window:SetVisible(v) visible = v; mf.Visible = v end
+    function Window:SetTitle(t)   htitle.Text = t or "" end
 
     function Window:AddTab(name, iconID)
         name = name or ("Aba " .. (#self._Tabs + 1))
@@ -1632,6 +2166,16 @@ function ModernNoir.CreateWindow(opts)
             if self._ActiveTab and self._ActiveTab._Button == tbtn then return end
             Util.Tween(tbtn, Config.TweenFast, {BackgroundColor3 = Theme.Surface})
             Util.Tween(tlbl, Config.TweenFast, {TextColor3 = Theme.TextSecondary})
+        end)
+
+        -- conecta search ao tbtn: filtra por nome da tab
+        searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+            local query = searchBox.Text:lower()
+            if query == "" then
+                tbtn.Visible = true
+            else
+                tbtn.Visible = name:lower():find(query, 1, true) ~= nil
+            end
         end)
 
         local canvas = Instance.new("CanvasGroup")
@@ -1721,6 +2265,14 @@ function ModernNoir.CreateWindow(opts)
         function Tab:AddKeybind(ltext, ldefault, lcb)
             self._Count += 1
             return Widgets.Keybind(self.ScrollFrame, ltext, ldefault, self._Count, lcb)
+        end
+        function Tab:AddProgressBar(ltext, lvalue)
+            self._Count += 1
+            return Widgets.ProgressBar(self.ScrollFrame, ltext, lvalue, self._Count)
+        end
+        function Tab:AddColorPicker(ltext, ldefault, lcb)
+            self._Count += 1
+            return Widgets.ColorPicker(self.ScrollFrame, ltext, ldefault, self._Count, lcb)
         end
 
         table.insert(self._Tabs, Tab)
